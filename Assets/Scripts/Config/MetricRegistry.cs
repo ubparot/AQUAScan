@@ -67,12 +67,41 @@ namespace AQUAScan.Config
             _initialized = true;
             _metrics.Clear();
 
-            AddOrUpdate(new MetricDescriptor("temperature", "Temperature", "°C", new Vector2(0, 35), BuildGradient(Color.cyan, Color.red)));
-            AddOrUpdate(new MetricDescriptor("ph", "pH", "", new Vector2(6, 9), BuildGradient(new Color(0.1f, 0.2f, 0.8f), new Color(0.9f, 0.9f, 0.2f))));
-            AddOrUpdate(new MetricDescriptor("do", "Dissolved Oxygen", "mg/L", new Vector2(0, 14), BuildGradient(Color.blue, Color.green)));
-            AddOrUpdate(new MetricDescriptor("salinity", "Salinity", "ppt", new Vector2(0, 40), BuildGradient(new Color(0.8f, 0.95f, 1f), new Color(0.0f, 0.3f, 0.6f))));
-            AddOrUpdate(new MetricDescriptor("turbidity", "Turbidity", "NTU", new Vector2(0, 100), BuildGradient(new Color(0.9f, 0.9f, 0.9f), new Color(0.3f, 0.2f, 0.0f))));
-            AddOrUpdate(new MetricDescriptor("depth", "Depth", "m", new Vector2(0, 50), BuildGradient(new Color(0.9f, 0.95f, 1f), new Color(0.0f, 0.0f, 0.4f))));
+            // High-Detail Thermal Gradient (Blue -> Cyan -> Green -> Yellow -> Red)
+            AddOrUpdate(new MetricDescriptor(
+                "temperature",
+                "Temperature",
+                "°C",
+                new Vector2(15, 30), // Adjust this range to your specific water temp
+                BuildThermalGradient()
+            ));
+
+            // Standard pH Gradient
+            AddOrUpdate(new MetricDescriptor(
+                "ph", "pH", "", new Vector2(6, 9),
+                BuildGradient(new Color(0.5f, 0, 0.8f), Color.yellow)
+            ));
+        }
+
+        private static Gradient BuildThermalGradient()
+        {
+            var gradient = new Gradient();
+
+            // Five-color "Turbo/Jet" style ramp for better data visualization
+            gradient.SetKeys(
+                new GradientColorKey[] {
+            new GradientColorKey(Color.blue, 0.0f),      // Cold
+            new GradientColorKey(Color.cyan, 0.25f),    // Cool
+            new GradientColorKey(Color.green, 0.5f),     // Neutral
+            new GradientColorKey(Color.yellow, 0.75f),   // Warm
+            new GradientColorKey(Color.red, 1.0f)        // Hot
+                },
+                new GradientAlphaKey[] {
+            new GradientAlphaKey(1f, 0f),
+            new GradientAlphaKey(1f, 1f)
+                }
+            );
+            return gradient;
         }
 
         private static Gradient BuildGradient(Color start, Color end)

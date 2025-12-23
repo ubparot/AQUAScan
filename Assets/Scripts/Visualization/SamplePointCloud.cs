@@ -68,6 +68,7 @@ namespace AQUAScan.Visualization
         {
             if (_samples == null || _samples.Count == 0)
                 return;
+
             _metricId = metricId.ToLowerInvariant();
             _metricDescriptor = MetricRegistry.GetOrCreate(metricId);
             _min = _metricDescriptor.ExpectedRange.x;
@@ -76,7 +77,8 @@ namespace AQUAScan.Visualization
             var count = _particleSystem.particleCount;
             var particles = new ParticleSystem.Particle[count];
             _particleSystem.GetParticles(particles);
-            for (int i = 0; i < count; i++)
+            int maxIndex = Mathf.Min(count, _samples.Count);
+            for (int i = 0; i < maxIndex; i++)
             {
                 particles[i].startColor = EvaluateColor(_samples[i]);
             }

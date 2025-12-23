@@ -9,6 +9,10 @@ Shader "AQUAScan/RealisticWater_Pro"
 
         [Header(Heatmap Integration)]
         _HeatmapIntensity("Heatmap Intensity", Range(0,1)) = 1.0
+        _HeatmapTintStrength("Heatmap Tint Strength", Range(0,2)) = 1.0
+        _HeatmapEmission("Heatmap Emission", Range(0,1)) = 0.1
+        _HeatmapAlphaMin("Heatmap Fade Min", Range(0,1)) = 0.35
+        _HeatmapAlphaMax("Heatmap Fade Max", Range(0,1)) = 0.9
 
         [Header(Waves  Geometry)]
         _WaveSpeed ("Wave Speed", Float) = 1.0
@@ -104,6 +108,10 @@ Shader "AQUAScan/RealisticWater_Pro"
                 float4 _FoamColor;
 
                 float _HeatmapIntensity;
+                float _HeatmapTintStrength;
+                float _HeatmapEmission;
+                float _HeatmapAlphaMin;
+                float _HeatmapAlphaMax;
 
                 float _WaveSpeed;
                 float _WaveScale;
@@ -164,15 +172,31 @@ Shader "AQUAScan/RealisticWater_Pro"
             // Geometry waves (simple + stable). Adds slight horizontal "chop" for realism.
             float3 GetWaveDisplacement(float3 posWS, float t)
             {
-                float w1 = sin(posWS.x * _WaveScale + t);
-                float w2 = cos(posWS.z * (_WaveScale * 0.83) + t * 1.17);
-                float h = (w1 + w2) * _WaveHeight;
+                float h = 0;
+                float2 chop = 0;
 
-                // approximate horizontal displacement ("chop")
-                float2 grad = float2(cos(posWS.x * _WaveScale + t), -sin(posWS.z * (_WaveScale * 0.83) + t * 1.17));
-                float2 chop = grad * (_Chop * _WaveHeight);
+                // We'll iterate through 4 layers of "randomized" waves
+                // Using different primes/fractions to prevent repeating patterns
+                float frequencies[4] = { 1.0, 1.45, 2.11, 3.17 };
+                float amplitudes[4] = { 0.5, 0.25, 0.15, 0.1 };
+                float speeds[4] = { 1.0, 1.3, 1.8, 2.4 };
 
-                return float3(chop.x, h, chop.y);
+                for(int i = 0; i < 4; i++)
+                {
+                    // Use the loop index as a seed for Hash2 to get a "random" direction
+                    float2 seed = float2(float(i) * 15.23, float(i) * 37.55);
+                    float2 dir = normalize(Hash2(seed) - 0.5);
+
+                    float x = dot(posWS.xz, dir) * (_WaveScale * frequencies[i]) + (t * speeds[i]);
+                    
+                    float wave = sin(x);
+                    h += wave * amplitudes[i];
+
+                    // Horizontal "Chop" displacement
+                    chop += dir * (cos(x) * amplitudes[i] * _Chop);
+                }
+
+                return float3(chop.x, h * _WaveHeight, chop.y);
             }
 
             float3 ComputeWaveNormal(float3 posWS, float t)
@@ -236,21 +260,23 @@ Shader "AQUAScan/RealisticWater_Pro"
                 return OUT;
             }
 
-            half4 Frag(Varyings IN) : SV_Target
+  // Inside Shader "AQUAScan/RealisticWater_Pro" -> SubShader -> Pass
+
+// Inside Shader "AQUAScan/RealisticWater_Pro" -> SubShader -> Pass
+
+half4 Frag(Varyings IN) : SV_Target
 {
-    // ---- Screen UV ----
+    // ---- Screen UV & Depth ----
     float4 screenPos = ComputeScreenPos(IN.positionCS);
     float2 uvScreen = screenPos.xy / screenPos.w;
 
-    // ---- Depth ----
     float rawDepth = SampleSceneDepth(uvScreen);
     float sceneDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
     float surfaceDepth = LinearEyeDepth(IN.positionCS.z, _ZBufferParams);
     float waterDepth = max(0, sceneDepth - surfaceDepth);
-
     float depth01 = saturate(waterDepth / max(0.0001, _DepthDistance));
 
-    // ---- Surface normals (detail) ----
+    // ---- Normals & Surface Detail ----
     float t = _Time.y * _WaveSpeed;
     float2 uvA = IN.positionWS.xz * _NormalTilingA + _NormalSpeedA.xy * t;
     float2 uvB = IN.positionWS.xz * _NormalTilingB + _NormalSpeedB.xy * t;
@@ -261,13 +287,15 @@ Shader "AQUAScan/RealisticWater_Pro"
     float3 normalWS = normalize(IN.normalWS + float3(nDetailTS.x, 0, nDetailTS.y) * 0.6);
     float3 viewDir = normalize(IN.viewDirWS);
 
-    // ---- Base water color via absorption/scatter ----
+    // ---- Base Water Appearance ----
     float3 shallow = _ShallowColor.rgb;
     float3 deep    = _DeepColor.rgb;
     float absorb = exp(-waterDepth * _Absorption * 0.15);
     float3 depthTint = lerp(deep, shallow, absorb);
     float scatter = (1.0 - depth01) * _Scatter;
     float3 waterBase = depthTint + scatter;
+    
+    // Standard water alpha (used when no heatmap data is present)
     float alphaBase = lerp(_ShallowColor.a, _DeepColor.a, depth01);
 
     // ---- Refraction ----
@@ -293,6 +321,7 @@ Shader "AQUAScan/RealisticWater_Pro"
     float NdotL = saturate(dot(normalWS, L));
     float NdotH = saturate(dot(normalWS, H));
     float NdotV = saturate(dot(normalWS, viewDir));
+
     float specPower = lerp(32.0, 512.0, _Smoothness);
     float spec = pow(NdotH, specPower) * (0.04 + 0.96 * pow(1.0 - NdotV, 2.0));
     float fresnel = pow(1.0 - NdotV, _FresnelPower);
@@ -306,26 +335,28 @@ Shader "AQUAScan/RealisticWater_Pro"
         lit += c * _CausticsStrength * shallowMask * 0.25;
     }
 
-    // ---- HEATMAP BLEND (Updated) ----
-    // ---- HEATMAP BLEND (Improved for Visibility) ----
-// ---- HEATMAP BLEND (High Visibility Mode) ----
-// heatmapMask: 1.0 where we have data, 0.0 where we don't.
-float heatmapMask = IN.color.a * _HeatmapIntensity;
-float3 heatmapColor = IN.color.rgb;
+    // ================= REVISED FIX =================
+    // 1. Get the Data Presence (Vertex Alpha)
+    // If this is the main water plane, IN.color.a will likely be 0.
+    float dataPresence = saturate(IN.color.a);
+    
+    // 2. Calculate Intensity Mask
+    float heatmapMask = dataPresence * _HeatmapIntensity;
+    float3 heatmapColor = IN.color.rgb;
 
-// 1. Calculate a "Tint" - we use a Screen-style blend so it brightens the water
-// instead of just making it a flat, muddy color.
-float3 tint = 1.0 - (1.0 - lit) * (1.0 - heatmapColor);
+    // 3. Blend Colors
+    // If mask is 0 (no data), we keep the original 'lit' water color.
+    float3 tintedLit = lit * lerp(1.0.xxx, heatmapColor, _HeatmapTintStrength) + heatmapColor * (_HeatmapEmission * heatmapMask);
+    float3 finalColor = lerp(lit, tintedLit, heatmapMask);
 
-// 2. Add a tiny bit of emissive 'glow' to the data so it's visible in shadows
-float3 glow = heatmapColor * 0.15;
-
-// 3. Final Mix: If mask is 0, we get 'lit' (normal water). 
-// If mask is 1, we get the vibrant tinted water + glow.
-float3 finalColor = lerp(lit, tint + glow, heatmapMask);
-
-// Keep the alpha from the water so we maintain transparency/depth
-float finalAlpha = alphaBase;
+    // 4. FIX: Use Standard Water Alpha as the fallback.
+    // Instead of multiplying by dataPresence (which hides the water), we lerp.
+    // Target Alpha when Heatmap is Active:
+    float heatmapAlphaTarget = alphaBase * _HeatmapAlphaMax;
+    
+    // Final Alpha: Blends from Standard Water Alpha -> Heatmap Alpha based on mask.
+    float finalAlpha = lerp(alphaBase, heatmapAlphaTarget, heatmapMask);
+    // ============================================
 
     // ---- Fog ----
     float fogFactor = ComputeFogFactor(IN.positionCS.z);

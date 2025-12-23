@@ -32,6 +32,14 @@ namespace AQUAScan.AquaData
             return Metrics.TryGetValue(metricId.ToLowerInvariant(), out value);
         }
 
+        public void DebugLogMetrics()
+        {
+            foreach (var kvp in Metrics)
+            {
+                Debug.Log($"[AquaSample] {Timestamp}: Metric '{kvp.Key}' = {kvp.Value}");
+            }
+        }
+
         public void SetMetric(string metricId, float value)
         {
             Metrics[metricId.ToLowerInvariant()] = value;

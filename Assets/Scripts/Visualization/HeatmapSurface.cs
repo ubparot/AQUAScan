@@ -5,34 +5,29 @@ using UnityEngine;
 
 namespace AQUAScan.Visualization
 {
-    [RequireComponent(typeof(MeshFilter))]
-    [RequireComponent(typeof(MeshRenderer))]
+    [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
     public class HeatmapSurface : MonoBehaviour
     {
         [Header("Grid Settings")]
         public float CellSize = 2f;
-        public Vector2 MinWorldSize = new Vector2(200f, 200f);
-        public float VerticalOffset = 0.0f;
-
-        [Header("Visuals")]
-        public float MinAlpha = 0.35f;
-        public float MaxAlpha = 0.9f;
-        public float EdgeFeather = 25f; // Increased for better edge fading
-
-        [Tooltip("Color for water areas with no heatmap data")]
-        public Color BaseWaterColor = new Color(0, 0, 0, 0);
-
-        [Header("Expansion Settings")]
         public float WorldSize = 500f;
-        public Color EmptyCellColor = new Color(0, 0, 0, 0);
+        public float VerticalOffset = 0.05f;
+
+        [Header("Blending & Smoothing")]
+        [Range(1f, 30f)]
+        public float InfluenceRadius = 8f;
+        [Range(0.01f, 5f)]
+        [Tooltip("Higher values make the edges of the trail softer")]
+        public float TrailSoftness = 1.0f;
 
         private MeshFilter _meshFilter;
         private MeshRenderer _meshRenderer;
         private MetricDescriptor _metricDescriptor;
-        private string _metricId = "temperature";
-        private float _min;
-        private float _max;
         private bool _isVisible = true;
+
+        private AquaMission _lastMission;
+        private string _lastMetricId;
+        private bool _needsRedraw = false;
 
         private void Awake()
         {
@@ -46,170 +41,128 @@ namespace AQUAScan.Visualization
             if (_meshRenderer != null) _meshRenderer.enabled = visible;
         }
 
-        public void ToggleVisibility()
+        private void OnValidate()
         {
-            ToggleVisibility(!_isVisible);
+            // Instead of generating here, we set a flag.
+            _needsRedraw = true;
+        }
+
+        private void Update()
+        {
+            // Only redraw if a value changed and we have data.
+            if (_needsRedraw && Application.isPlaying && _lastMission != null)
+            {
+                GenerateInternal(_lastMission, _lastMetricId);
+                _needsRedraw = false;
+            }
         }
 
         public void Generate(AquaMission mission, string metricId)
         {
-            if (mission == null || mission.IsEmpty) return;
-            if (!_isVisible) return; // Optimization
+            _lastMission = mission;
+            _lastMetricId = metricId;
+            GenerateInternal(mission, metricId);
+        }
 
-            _metricId = metricId.ToLowerInvariant();
+        private void GenerateInternal(AquaMission mission, string metricId)
+        {
+            if (mission == null || mission.IsEmpty) return;
+
             _metricDescriptor = MetricRegistry.GetOrCreate(metricId);
-            _min = _metricDescriptor.ExpectedRange.x;
-            _max = _metricDescriptor.ExpectedRange.y;
 
             Bounds dataBounds = ComputeBounds(mission.Samples);
             Vector3 origin = dataBounds.center - new Vector3(WorldSize / 2f, 0, WorldSize / 2f);
-
-            // Ensure grid aligns to cell size to prevent jitter
             origin.x = Mathf.Floor(origin.x / CellSize) * CellSize;
             origin.z = Mathf.Floor(origin.z / CellSize) * CellSize;
 
-            int cellsX = Mathf.Max(1, Mathf.CeilToInt(WorldSize / CellSize));
-            int cellsZ = Mathf.Max(1, Mathf.CeilToInt(WorldSize / CellSize));
+            int resX = Mathf.CeilToInt(WorldSize / CellSize) + 1;
+            int resZ = Mathf.CeilToInt(WorldSize / CellSize) + 1;
 
-            // 1. Map Data
-            var sums = new Dictionary<Vector2Int, float>();
-            var counts = new Dictionary<Vector2Int, int>();
+            float[] vertexValues = new float[resX * resZ];
+            float[] vertexWeights = new float[resX * resZ];
+            float radiusSq = InfluenceRadius * InfluenceRadius;
 
+            // 1. DATA SPLATTING (Smoother Weighting)
             foreach (var sample in mission.Samples)
             {
-                if (!sample.TryGetMetric(_metricId, out var value)) continue;
+                if (!sample.TryGetMetric(metricId, out var val)) continue;
 
-                int gx = Mathf.FloorToInt((sample.LocalPosition.x - origin.x) / CellSize);
-                int gz = Mathf.FloorToInt((sample.LocalPosition.z - origin.z) / CellSize);
+                int minX = Mathf.Max(0, Mathf.FloorToInt((sample.LocalPosition.x - origin.x - InfluenceRadius) / CellSize));
+                int maxX = Mathf.Min(resX - 1, Mathf.CeilToInt((sample.LocalPosition.x - origin.x + InfluenceRadius) / CellSize));
+                int minZ = Mathf.Max(0, Mathf.FloorToInt((sample.LocalPosition.z - origin.z - InfluenceRadius) / CellSize));
+                int maxZ = Mathf.Min(resZ - 1, Mathf.CeilToInt((sample.LocalPosition.z - origin.z + InfluenceRadius) / CellSize));
 
-                if (gx >= 0 && gx < cellsX && gz >= 0 && gz < cellsZ)
+                for (int z = minZ; z <= maxZ; z++)
                 {
-                    Vector2Int key = new Vector2Int(gx, gz);
-                    if (!sums.ContainsKey(key)) { sums[key] = 0; counts[key] = 0; }
-                    sums[key] += value;
-                    counts[key] += 1;
+                    for (int x = minX; x <= maxX; x++)
+                    {
+                        Vector3 vertexPos = new Vector3(origin.x + x * CellSize, 0, origin.z + z * CellSize);
+                        float distSq = (new Vector2(sample.LocalPosition.x - vertexPos.x, sample.LocalPosition.z - vertexPos.z)).sqrMagnitude;
+
+                        if (distSq < radiusSq)
+                        {
+                            float t = distSq / radiusSq;
+                            float falloff = (1.0f - t) * (1.0f - t);
+
+                            int idx = z * resX + x;
+                            vertexValues[idx] += val * falloff;
+                            vertexWeights[idx] += falloff;
+                        }
+                    }
                 }
             }
 
-            var vertices = new List<Vector3>();
-            var colors = new List<Color>();
-            var triangles = new List<int>();
+            // 2. MESH GENERATION
+            Vector3[] vertices = new Vector3[resX * resZ];
+            Color[] colors = new Color[resX * resZ];
+            List<int> triangles = new List<int>();
 
-            // 2. Build Mesh with Neighbor Blending
-            for (int x = 0; x < cellsX; x++)
+            for (int z = 0; z < resZ; z++)
             {
-                for (int z = 0; z < cellsZ; z++)
+                for (int x = 0; x < resX; x++)
                 {
-                    Vector2Int key = new Vector2Int(x, z);
-                    bool hasData = counts.ContainsKey(key);
+                    int i = z * resX + x;
+                    vertices[i] = new Vector3(origin.x + x * CellSize, dataBounds.center.y + VerticalOffset, origin.z + z * CellSize);
 
-                    // Check Neighbors to create soft edges
-                    bool leftEmpty = !counts.ContainsKey(new Vector2Int(x - 1, z));
-                    bool rightEmpty = !counts.ContainsKey(new Vector2Int(x + 1, z));
-                    bool downEmpty = !counts.ContainsKey(new Vector2Int(x, z - 1));
-                    bool upEmpty = !counts.ContainsKey(new Vector2Int(x, z + 1));
-
-                    float avg = hasData ? sums[key] / counts[key] : 0f;
-                    Color baseColor = hasData ? EvaluateColor(avg) : EmptyCellColor;
-
-                    // If this cell is empty, we just add transparent verts
-                    if (!hasData)
+                    if (vertexWeights[i] > 0.001f)
                     {
-                        AddQuad(vertices, colors, triangles, x, z, origin, dataBounds.center.y, EmptyCellColor, EmptyCellColor, EmptyCellColor, EmptyCellColor, cellsX, cellsZ);
-                        continue;
+                        float avg = vertexValues[i] / vertexWeights[i];
+                        float t = Mathf.InverseLerp(_metricDescriptor.ExpectedRange.x, _metricDescriptor.ExpectedRange.y, avg);
+                        colors[i] = _metricDescriptor.Gradient.Evaluate(t);
+
+                        // Use TrailSoftness to divide the weight for a smoother fade.
+                        colors[i].a = Mathf.Clamp01(vertexWeights[i] / TrailSoftness);
+                    }
+                    else
+                    {
+                        colors[i] = new Color(0, 0, 0, 0);
                     }
 
-                    // If this cell HAS data, calculate alpha for each corner based on neighbors
-                    // BL, BR, TL, TR
-                    Color cBL = baseColor;
-                    Color cBR = baseColor;
-                    Color cTL = baseColor;
-                    Color cTR = baseColor;
-
-                    // Fade edges if neighbor is missing
-                    if (leftEmpty) { cBL.a = 0; cTL.a = 0; }
-                    if (rightEmpty) { cBR.a = 0; cTR.a = 0; }
-                    if (downEmpty) { cBL.a = 0; cBR.a = 0; }
-                    if (upEmpty) { cTL.a = 0; cTR.a = 0; }
-
-                    // Also handle global edge feathering (distance from center of world)
-                    ApplyGlobalFeather(ref cBL, x, z, cellsX, cellsZ);
-                    ApplyGlobalFeather(ref cBR, x + 1, z, cellsX, cellsZ);
-                    ApplyGlobalFeather(ref cTL, x, z + 1, cellsX, cellsZ);
-                    ApplyGlobalFeather(ref cTR, x + 1, z + 1, cellsX, cellsZ);
-
-                    AddQuad(vertices, colors, triangles, x, z, origin, dataBounds.center.y, cBL, cBR, cTL, cTR, cellsX, cellsZ);
+                    if (x < resX - 1 && z < resZ - 1)
+                    {
+                        int row = z * resX;
+                        int nextRow = (z + 1) * resX;
+                        triangles.Add(row + x); triangles.Add(nextRow + x); triangles.Add(row + x + 1);
+                        triangles.Add(row + x + 1); triangles.Add(nextRow + x); triangles.Add(nextRow + x + 1);
+                    }
                 }
             }
 
-            Mesh mesh = new Mesh
-            {
-                indexFormat = vertices.Count > 65535 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16
-            };
-            mesh.SetVertices(vertices);
-            mesh.SetTriangles(triangles, 0);
-            mesh.SetColors(colors);
+            Mesh mesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+            mesh.vertices = vertices;
+            mesh.colors = colors;
+            mesh.triangles = triangles.ToArray();
             mesh.RecalculateNormals();
 
             _meshFilter.sharedMesh = mesh;
-        }
-
-        private void AddQuad(List<Vector3> verts, List<Color> cols, List<int> tris, int x, int z, Vector3 origin, float yCenter, Color cBL, Color cBR, Color cTL, Color cTR, int maxX, int maxZ)
-        {
-            float x0 = origin.x + x * CellSize;
-            float x1 = x0 + CellSize;
-            float z0 = origin.z + z * CellSize;
-            float z1 = z0 + CellSize;
-            float y = yCenter + VerticalOffset;
-
-            int vStart = verts.Count;
-
-            verts.Add(new Vector3(x0, y, z0)); // 0: Bottom-Left
-            verts.Add(new Vector3(x1, y, z0)); // 1: Bottom-Right
-            verts.Add(new Vector3(x0, y, z1)); // 2: Top-Left
-            verts.Add(new Vector3(x1, y, z1)); // 3: Top-Right
-
-            cols.Add(cBL);
-            cols.Add(cBR);
-            cols.Add(cTL);
-            cols.Add(cTR);
-
-            tris.Add(vStart + 0);
-            tris.Add(vStart + 2);
-            tris.Add(vStart + 1);
-            tris.Add(vStart + 1);
-            tris.Add(vStart + 2);
-            tris.Add(vStart + 3);
-        }
-
-        private void ApplyGlobalFeather(ref Color c, float x, float z, float width, float height)
-        {
-            if (EdgeFeather <= 0.0001f) return;
-            float dx = Mathf.Min(x, width - x) * CellSize;
-            float dz = Mathf.Min(z, height - z) * CellSize;
-            float fade = Mathf.Clamp01(Mathf.Min(dx, dz) / EdgeFeather);
-            c.a *= fade;
+            if (_meshRenderer != null) _meshRenderer.enabled = _isVisible;
         }
 
         private Bounds ComputeBounds(List<AquaSample> samples)
         {
-            if (samples.Count == 0) return new Bounds(Vector3.zero, Vector3.zero);
             var b = new Bounds(samples[0].LocalPosition, Vector3.zero);
             foreach (var s in samples) b.Encapsulate(s.LocalPosition);
             return b;
-        }
-
-        private Color EvaluateColor(float value)
-        {
-            float t = Mathf.InverseLerp(_min, _max, value);
-            Color c = _metricDescriptor.Gradient.Evaluate(t);
-
-            // We set alpha to 1.0 here. 
-            // This tells the shader: "THIS PIXEL HAS DATA."
-            // The shader then uses this 1.0 to decide to show the tint.
-            c.a = 1f;
-
-            return c;
         }
     }
 }
