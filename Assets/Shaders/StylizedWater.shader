@@ -237,118 +237,102 @@ Shader "AQUAScan/RealisticWater_Pro"
             }
 
             half4 Frag(Varyings IN) : SV_Target
-            {
-                // ---- Screen UV ----
-                float4 screenPos = ComputeScreenPos(IN.positionCS);
-                float2 uvScreen = screenPos.xy / screenPos.w;
+{
+    // ---- Screen UV ----
+    float4 screenPos = ComputeScreenPos(IN.positionCS);
+    float2 uvScreen = screenPos.xy / screenPos.w;
 
-                // ---- Depth ----
-                float rawDepth = SampleSceneDepth(uvScreen);
-                float sceneDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
-                float surfaceDepth = LinearEyeDepth(IN.positionCS.z, _ZBufferParams);
-                float waterDepth = max(0, sceneDepth - surfaceDepth);
+    // ---- Depth ----
+    float rawDepth = SampleSceneDepth(uvScreen);
+    float sceneDepth = LinearEyeDepth(rawDepth, _ZBufferParams);
+    float surfaceDepth = LinearEyeDepth(IN.positionCS.z, _ZBufferParams);
+    float waterDepth = max(0, sceneDepth - surfaceDepth);
 
-                float depth01 = saturate(waterDepth / max(0.0001, _DepthDistance));
+    float depth01 = saturate(waterDepth / max(0.0001, _DepthDistance));
 
-                // ---- Surface normals (detail) ----
-                float t = _Time.y * _WaveSpeed;
+    // ---- Surface normals (detail) ----
+    float t = _Time.y * _WaveSpeed;
+    float2 uvA = IN.positionWS.xz * _NormalTilingA + _NormalSpeedA.xy * t;
+    float2 uvB = IN.positionWS.xz * _NormalTilingB + _NormalSpeedB.xy * t;
 
-                float2 uvA = IN.positionWS.xz * _NormalTilingA + _NormalSpeedA.xy * t;
-                float2 uvB = IN.positionWS.xz * _NormalTilingB + _NormalSpeedB.xy * t;
+    float3 nA = UnpackNormalScale(TEXTURE2D_ARGS(_NormalA, sampler_NormalA), uvA, _NormalStrength);
+    float3 nB = UnpackNormalScale(TEXTURE2D_ARGS(_NormalB, sampler_NormalB), uvB, _NormalStrength * 0.75);
+    float3 nDetailTS = BlendNormalsRNM(nA, nB);
+    float3 normalWS = normalize(IN.normalWS + float3(nDetailTS.x, 0, nDetailTS.y) * 0.6);
+    float3 viewDir = normalize(IN.viewDirWS);
 
-                float3 nA = UnpackNormalScale(TEXTURE2D_ARGS(_NormalA, sampler_NormalA), uvA, _NormalStrength);
-                float3 nB = UnpackNormalScale(TEXTURE2D_ARGS(_NormalB, sampler_NormalB), uvB, _NormalStrength * 0.75);
-                float3 nDetailTS = BlendNormalsRNM(nA, nB);
+    // ---- Base water color via absorption/scatter ----
+    float3 shallow = _ShallowColor.rgb;
+    float3 deep    = _DeepColor.rgb;
+    float absorb = exp(-waterDepth * _Absorption * 0.15);
+    float3 depthTint = lerp(deep, shallow, absorb);
+    float scatter = (1.0 - depth01) * _Scatter;
+    float3 waterBase = depthTint + scatter;
+    float alphaBase = lerp(_ShallowColor.a, _DeepColor.a, depth01);
 
-                // Build a world-space perturbation by blending with geometric normal.
-                // For a flat water mesh, treating TS as "pseudo world" works well enough visually.
-                float3 normalWS = normalize(IN.normalWS + float3(nDetailTS.x, 0, nDetailTS.y) * 0.6);
+    // ---- Refraction ----
+    float refrFade = saturate(lerp(1.0, 1.0 - _RefractionDepthFade, depth01));
+    float2 distortion = normalWS.xz * _RefractionStrength * refrFade;
+    float3 sceneCol = SampleSceneColor(uvScreen + distortion);
+    float refrAmount = (1.0 - depth01) * 0.65;
+    float3 refracted = lerp(waterBase, sceneCol * waterBase, refrAmount);
 
-                float3 viewDir = normalize(IN.viewDirWS);
+    // ---- Foam ----
+    float foamShore = 1.0 - saturate(waterDepth / max(0.0001, _FoamSize));
+    float2 foamUV = IN.positionWS.xz * _FoamTiling + _FoamSpeed.xy * t;
+    float foamNoise = SAMPLE_TEXTURE2D(_FoamNoise, sampler_FoamNoise, foamUV).r;
+    float crest = saturate((1.0 - normalWS.y) * 3.0) * _CrestFoam;
+    float foam = saturate(foamShore * (foamNoise * 1.2) + crest);
+    foam = smoothstep(_FoamCutoff, 1.0, foam);
+    float3 withFoam = lerp(refracted, _FoamColor.rgb, foam);
 
-                // ---- Base water color via absorption/scatter ----
-                float3 shallow = _ShallowColor.rgb;
-                float3 deep    = _DeepColor.rgb;
+    // ---- Lighting ----
+    Light mainLight = GetMainLight();
+    float3 L = normalize(mainLight.direction);
+    float3 H = normalize(L + viewDir);
+    float NdotL = saturate(dot(normalWS, L));
+    float NdotH = saturate(dot(normalWS, H));
+    float NdotV = saturate(dot(normalWS, viewDir));
+    float specPower = lerp(32.0, 512.0, _Smoothness);
+    float spec = pow(NdotH, specPower) * (0.04 + 0.96 * pow(1.0 - NdotV, 2.0));
+    float fresnel = pow(1.0 - NdotV, _FresnelPower);
+    float3 lit = withFoam * (0.35 + 0.65 * NdotL) + spec * _SpecularColor.rgb * mainLight.color * 1.25 + fresnel * mainLight.color * 0.08;
 
-                // Beer–Lambert: more depth => more absorption => darker/deeper tint
-                float absorb = exp(-waterDepth * _Absorption * 0.15);
-                float3 depthTint = lerp(deep, shallow, absorb);
+    // ---- Caustics ----
+    if (_CausticsStrength > 0.001)
+    {
+        float c = Caustics(IN.positionWS.xz, t * _CausticsSpeed);
+        float shallowMask = (1.0 - depth01) * (1.0 - foam); 
+        lit += c * _CausticsStrength * shallowMask * 0.25;
+    }
 
-                // A little shallow scatter brightening (helps shoreline realism)
-                float scatter = (1.0 - depth01) * _Scatter;
-                float3 waterBase = depthTint + scatter;
+    // ---- HEATMAP BLEND (Updated) ----
+    // ---- HEATMAP BLEND (Improved for Visibility) ----
+// ---- HEATMAP BLEND (High Visibility Mode) ----
+// heatmapMask: 1.0 where we have data, 0.0 where we don't.
+float heatmapMask = IN.color.a * _HeatmapIntensity;
+float3 heatmapColor = IN.color.rgb;
 
-                // Base alpha still fades with depth
-                float alphaBase = lerp(_ShallowColor.a, _DeepColor.a, depth01);
+// 1. Calculate a "Tint" - we use a Screen-style blend so it brightens the water
+// instead of just making it a flat, muddy color.
+float3 tint = 1.0 - (1.0 - lit) * (1.0 - heatmapColor);
 
-                // ---- Refraction (distorted opaque texture) ----
-                // Fade refraction with depth so deep water is less “see-through”
-                float refrFade = saturate(lerp(1.0, 1.0 - _RefractionDepthFade, depth01));
+// 2. Add a tiny bit of emissive 'glow' to the data so it's visible in shadows
+float3 glow = heatmapColor * 0.15;
 
-                float2 distortion = normalWS.xz * _RefractionStrength * refrFade;
-                float3 sceneCol = SampleSceneColor(uvScreen + distortion);
+// 3. Final Mix: If mask is 0, we get 'lit' (normal water). 
+// If mask is 1, we get the vibrant tinted water + glow.
+float3 finalColor = lerp(lit, tint + glow, heatmapMask);
 
-                // Mix refraction into base color: shallow gets more scene contribution
-                float refrAmount = (1.0 - depth01) * 0.65;
-                float3 refracted = lerp(waterBase, sceneCol * waterBase, refrAmount);
+// Keep the alpha from the water so we maintain transparency/depth
+float finalAlpha = alphaBase;
 
-                // ---- Foam (shoreline + noise + crest) ----
-                float foamShore = 1.0 - saturate(waterDepth / max(0.0001, _FoamSize));
+    // ---- Fog ----
+    float fogFactor = ComputeFogFactor(IN.positionCS.z);
+    finalColor = MixFog(finalColor, fogFactor);
 
-                float2 foamUV = IN.positionWS.xz * _FoamTiling + _FoamSpeed.xy * t;
-                float foamNoise = SAMPLE_TEXTURE2D(_FoamNoise, sampler_FoamNoise, foamUV).r;
-
-                // crest foam based on surface slope/“choppiness”
-                float crest = saturate((1.0 - normalWS.y) * 3.0) * _CrestFoam;
-
-                float foam = saturate(foamShore * (foamNoise * 1.2) + crest);
-                foam = smoothstep(_FoamCutoff, 1.0, foam);
-
-                float3 withFoam = lerp(refracted, _FoamColor.rgb, foam);
-
-                // ---- Lighting (spec + fresnel) ----
-                Light mainLight = GetMainLight();
-
-                float3 L = normalize(mainLight.direction);
-                float3 H = normalize(L + viewDir);
-
-                float NdotL = saturate(dot(normalWS, L));
-                float NdotH = saturate(dot(normalWS, H));
-                float NdotV = saturate(dot(normalWS, viewDir));
-
-                // “Good enough” spec: sharpened by smoothness, stronger at glancing angles
-                float specPower = lerp(32.0, 512.0, _Smoothness);
-                float spec = pow(NdotH, specPower) * (0.04 + 0.96 * pow(1.0 - NdotV, 2.0));
-
-                float fresnel = pow(1.0 - NdotV, _FresnelPower);
-
-                float3 lit =
-                    withFoam * (0.35 + 0.65 * NdotL) +                      // diffuse-ish term
-                    spec * _SpecularColor.rgb * mainLight.color * 1.25 +    // highlights
-                    fresnel * mainLight.color * 0.08;                      // rim reflect
-
-                // ---- Caustics (only shallow) ----
-                if (_CausticsStrength > 0.001)
-                {
-                    float c = Caustics(IN.positionWS.xz, t * _CausticsSpeed);
-                    float shallowMask = (1.0 - depth01) * (1.0 - foam); // no caustics on foam
-                    lit += c * _CausticsStrength * shallowMask * 0.25;
-                }
-
-                // ---- Heatmap blend (kept from your original logic) ----
-                float heatmapAlpha = IN.color.a * _HeatmapIntensity;
-                float3 finalColor = lerp(lit, IN.color.rgb, heatmapAlpha);
-
-                // Keep visible when heatmap is off
-                float finalAlpha = alphaBase;
-
-
-                // ---- Fog ----
-                float fogFactor = ComputeFogFactor(IN.positionCS.z);
-                finalColor = MixFog(finalColor, fogFactor);
-
-                return half4(finalColor, finalAlpha);
-            }
+    return half4(finalColor, finalAlpha);
+}
             ENDHLSL
         }
     }

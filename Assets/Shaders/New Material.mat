@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: New Material
-  m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}
+  m_Shader: {fileID: 4800000, guid: d83da25d0b58fb545b51248e7a908b36, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -17,8 +17,7 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap:
-    RenderType: Opaque
+  stringTagMap: {}
   disabledShaderPasses: []
   m_LockedProperties: 
   m_SavedProperties:
@@ -48,11 +47,23 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _FoamNoise:
+        m_Texture: {fileID: 10300, guid: 0000000000000000f000000000000000, type: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _MainTex:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MetallicGlossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalA:
+        m_Texture: {fileID: 2800000, guid: 5f6790325bf231e4288f347790169c25, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalB:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -82,41 +93,80 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _Absorption: 6.6
+    - _Alpha: 0.8
     - _AlphaClip: 0
     - _AlphaToMask: 0
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
+    - _CausticsScale: 1.25
+    - _CausticsSpeed: 0.5
+    - _CausticsStrength: 0.62
+    - _Chop: 0.22
     - _ClearCoatMask: 0
     - _ClearCoatSmoothness: 0
+    - _CrestFoam: 0.6
     - _Cull: 2
     - _Cutoff: 0.5
+    - _DepthDistance: 3
+    - _DepthFadeEnd: -4
+    - _DepthFadeStart: 0
     - _DetailAlbedoMapScale: 1
     - _DetailNormalMapScale: 1
     - _DstBlend: 0
     - _DstBlendAlpha: 0
     - _EnvironmentReflections: 1
+    - _FadeFeather: 25
+    - _FadeRadius: 200
+    - _FoamCutoff: 0.24
+    - _FoamIntensity: 1.1
+    - _FoamSize: 0.41
+    - _FoamTiling: 0.35
+    - _FresnelPower: 3.5
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
+    - _HeatmapAlphaMax: 0.9
+    - _HeatmapAlphaMin: 0.35
+    - _HeatmapIntensity: 0.54
     - _Metallic: 0
+    - _NormalStrength: 1.63
+    - _NormalTilingA: 0.2
+    - _NormalTilingB: 0.5
     - _OcclusionStrength: 1
     - _Parallax: 0.005
     - _QueueOffset: 0
     - _ReceiveShadows: 1
-    - _Smoothness: 0.5
+    - _RefractionDepthFade: 0.65
+    - _RefractionStrength: 0.043
+    - _Scatter: 1.17
+    - _Smoothness: 0
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _SrcBlendAlpha: 1
     - _Surface: 0
+    - _WaveAmplitude: 0.12
+    - _WaveFrequency: 0.35
+    - _WaveHeight: 0.2
+    - _WaveScale: 1
+    - _WaveSpeed: 0.6
     - _WorkflowMode: 1
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _DeepColor: {r: 0.21169807, g: 0.40584898, b: 0.5999999, a: 0.85}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _FadeCenter: {r: 0, g: 0, b: 0, a: 0}
+    - _FoamColor: {r: 0.9, g: 0.95, b: 1, a: 0.9}
+    - _FoamSpeed: {r: 0.04, g: -0.02, b: 0, a: 0}
+    - _NormalSpeedA: {r: 0.05, g: 0.03, b: 0, a: 1.75}
+    - _NormalSpeedB: {r: -2.39, g: 0.03, b: 0.38, a: 1.19}
+    - _ShallowColor: {r: 0.16705582, g: 0.6994465, b: 0.89433956, a: 0.75}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
+    - _SpecularColor: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
 --- !u!114 &5621594350579557278
 MonoBehaviour:
