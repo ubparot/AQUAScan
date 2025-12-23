@@ -12,9 +12,12 @@ namespace AQUAScan.Visualization
     {
         public Transform BoatMarker;
         public float BoatHeightOffset = 0.2f;
+        [Tooltip("Use this if your boat model's forward axis is rotated (e.g. model points left/right).")]
+        public float BoatYawOffsetDeg = 90f;
 
         private LineRenderer _lineRenderer;
         private List<AquaSample> _samples;
+        private Dictionary<AquaSample, int> _sampleIndexLookup;
 
         private void Awake()
         {
@@ -25,9 +28,11 @@ namespace AQUAScan.Visualization
         public void RenderTrack(AquaMission mission)
         {
             _samples = mission.Samples;
+            _sampleIndexLookup = new Dictionary<AquaSample, int>(_samples.Count);
             _lineRenderer.positionCount = _samples.Count;
             for (int i = 0; i < _samples.Count; i++)
             {
+                _sampleIndexLookup[_samples[i]] = i;
                 _lineRenderer.SetPosition(i, _samples[i].LocalPosition);
             }
         }
@@ -52,15 +57,27 @@ namespace AQUAScan.Visualization
             pos.y += BoatHeightOffset;
             BoatMarker.position = pos;
 
-            if (from.HeadingDeg.HasValue)
+            Vector3 pathDir = Vector3.zero;
+            if (_sampleIndexLookup != null && _sampleIndexLookup.TryGetValue(from, out int idx))
             {
-                BoatMarker.rotation = Quaternion.Euler(0, -from.HeadingDeg.Value, 0);
+                var prev = idx > 0 ? _samples[idx - 1].LocalPosition : from.LocalPosition;
+                var next = idx + 1 < _samples.Count ? _samples[idx + 1].LocalPosition : to.LocalPosition;
+                pathDir = next - prev;
             }
-            else if (_samples.Count > 1)
+
+            if (pathDir.sqrMagnitude < 0.0001f)
+                pathDir = to.LocalPosition - from.LocalPosition;
+
+            if (pathDir.sqrMagnitude > 0.0001f)
             {
-                var dir = (to.LocalPosition - from.LocalPosition).normalized;
-                if (dir.sqrMagnitude > 0.0001f)
-                    BoatMarker.rotation = Quaternion.LookRotation(new Vector3(dir.x, 0, dir.z), Vector3.up);
+                var flatDir = new Vector3(pathDir.x, 0f, pathDir.z).normalized;
+                var rot = Quaternion.LookRotation(flatDir, Vector3.up);
+                BoatMarker.rotation = rot * Quaternion.Euler(0f, BoatYawOffsetDeg, 0f);
+            }
+            else if (from.HeadingDeg.HasValue)
+            {
+                var rot = Quaternion.Euler(0f, -from.HeadingDeg.Value, 0f);
+                BoatMarker.rotation = rot * Quaternion.Euler(0f, BoatYawOffsetDeg, 0f);
             }
         }
     }
