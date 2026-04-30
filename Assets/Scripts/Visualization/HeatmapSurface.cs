@@ -12,6 +12,8 @@ namespace AQUAScan.Visualization
         public float CellSize = 2f;
         public float WorldSize = 500f;
         public float VerticalOffset = 0.05f;
+        [Tooltip("When enabled, the heatmap grid auto-fits to the mission bounds with padding.")]
+        public bool AutoFitBounds = true;
 
         [Header("Blending & Smoothing")]
         [Range(1f, 30f)]
@@ -31,8 +33,20 @@ namespace AQUAScan.Visualization
 
         private void Awake()
         {
-            _meshFilter = GetComponent<MeshFilter>();
-            _meshRenderer = GetComponent<MeshRenderer>();
+            EnsureComponents();
+        }
+
+        private void OnEnable()
+        {
+            EnsureComponents();
+        }
+
+        private void EnsureComponents()
+        {
+            if (_meshFilter == null)
+                _meshFilter = GetComponent<MeshFilter>();
+            if (_meshRenderer == null)
+                _meshRenderer = GetComponent<MeshRenderer>();
         }
 
         public void ToggleVisibility(bool visible)
@@ -67,37 +81,71 @@ namespace AQUAScan.Visualization
         private void GenerateInternal(AquaMission mission, string metricId)
         {
             if (mission == null || mission.IsEmpty) return;
+            EnsureComponents();
+            if (_meshFilter == null)
+                return;
 
             _metricDescriptor = MetricRegistry.GetOrCreate(metricId);
+            var worldToLocal = transform.worldToLocalMatrix;
 
-            Bounds dataBounds = ComputeBounds(mission.Samples);
-            Vector3 origin = dataBounds.center - new Vector3(WorldSize / 2f, 0, WorldSize / 2f);
-            origin.x = Mathf.Floor(origin.x / CellSize) * CellSize;
-            origin.z = Mathf.Floor(origin.z / CellSize) * CellSize;
+            // Work in local space so the heatmap follows the GameObject transform (position/rotation).
+            List<Vector3> sampleLocalPositions = new List<Vector3>(mission.Samples.Count);
+            for (int i = 0; i < mission.Samples.Count; i++)
+                sampleLocalPositions.Add(worldToLocal.MultiplyPoint3x4(mission.Samples[i].LocalPosition));
 
-            int resX = Mathf.CeilToInt(WorldSize / CellSize) + 1;
-            int resZ = Mathf.CeilToInt(WorldSize / CellSize) + 1;
+            Bounds dataBounds = ComputeBounds(sampleLocalPositions);
+            float padding = Mathf.Max(CellSize, InfluenceRadius);
+
+            Vector3 origin;
+            int resX;
+            int resZ;
+
+            if (AutoFitBounds)
+            {
+                float sizeX = dataBounds.size.x + padding * 2f;
+                float sizeZ = dataBounds.size.z + padding * 2f;
+
+                origin = new Vector3(
+                    Mathf.Floor((dataBounds.min.x - padding) / CellSize) * CellSize,
+                    0f,
+                    Mathf.Floor((dataBounds.min.z - padding) / CellSize) * CellSize);
+
+                resX = Mathf.CeilToInt(sizeX / CellSize) + 1;
+                resZ = Mathf.CeilToInt(sizeZ / CellSize) + 1;
+            }
+            else
+            {
+                origin = dataBounds.center - new Vector3(WorldSize / 2f, 0, WorldSize / 2f);
+                origin.x = Mathf.Floor(origin.x / CellSize) * CellSize;
+                origin.z = Mathf.Floor(origin.z / CellSize) * CellSize;
+
+                resX = Mathf.CeilToInt(WorldSize / CellSize) + 1;
+                resZ = Mathf.CeilToInt(WorldSize / CellSize) + 1;
+            }
 
             float[] vertexValues = new float[resX * resZ];
             float[] vertexWeights = new float[resX * resZ];
             float radiusSq = InfluenceRadius * InfluenceRadius;
 
             // 1. DATA SPLATTING (Smoother Weighting)
-            foreach (var sample in mission.Samples)
+            for (int sampleIndex = 0; sampleIndex < mission.Samples.Count; sampleIndex++)
             {
+                var sample = mission.Samples[sampleIndex];
                 if (!sample.TryGetMetric(metricId, out var val)) continue;
 
-                int minX = Mathf.Max(0, Mathf.FloorToInt((sample.LocalPosition.x - origin.x - InfluenceRadius) / CellSize));
-                int maxX = Mathf.Min(resX - 1, Mathf.CeilToInt((sample.LocalPosition.x - origin.x + InfluenceRadius) / CellSize));
-                int minZ = Mathf.Max(0, Mathf.FloorToInt((sample.LocalPosition.z - origin.z - InfluenceRadius) / CellSize));
-                int maxZ = Mathf.Min(resZ - 1, Mathf.CeilToInt((sample.LocalPosition.z - origin.z + InfluenceRadius) / CellSize));
+                Vector3 sampleLocal = sampleLocalPositions[sampleIndex];
+
+                int minX = Mathf.Max(0, Mathf.FloorToInt((sampleLocal.x - origin.x - InfluenceRadius) / CellSize));
+                int maxX = Mathf.Min(resX - 1, Mathf.CeilToInt((sampleLocal.x - origin.x + InfluenceRadius) / CellSize));
+                int minZ = Mathf.Max(0, Mathf.FloorToInt((sampleLocal.z - origin.z - InfluenceRadius) / CellSize));
+                int maxZ = Mathf.Min(resZ - 1, Mathf.CeilToInt((sampleLocal.z - origin.z + InfluenceRadius) / CellSize));
 
                 for (int z = minZ; z <= maxZ; z++)
                 {
                     for (int x = minX; x <= maxX; x++)
                     {
                         Vector3 vertexPos = new Vector3(origin.x + x * CellSize, 0, origin.z + z * CellSize);
-                        float distSq = (new Vector2(sample.LocalPosition.x - vertexPos.x, sample.LocalPosition.z - vertexPos.z)).sqrMagnitude;
+                        float distSq = (new Vector2(sampleLocal.x - vertexPos.x, sampleLocal.z - vertexPos.z)).sqrMagnitude;
 
                         if (distSq < radiusSq)
                         {
@@ -158,10 +206,10 @@ namespace AQUAScan.Visualization
             if (_meshRenderer != null) _meshRenderer.enabled = _isVisible;
         }
 
-        private Bounds ComputeBounds(List<AquaSample> samples)
+        private Bounds ComputeBounds(List<Vector3> positions)
         {
-            var b = new Bounds(samples[0].LocalPosition, Vector3.zero);
-            foreach (var s in samples) b.Encapsulate(s.LocalPosition);
+            var b = new Bounds(positions[0], Vector3.zero);
+            foreach (var p in positions) b.Encapsulate(p);
             return b;
         }
     }

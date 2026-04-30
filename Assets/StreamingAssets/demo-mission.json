@@ -1,10 +1,10 @@
 {
   "missionName": "Demo JSON Mission",
   "samples": [
-    { "timestamp": "2025-01-01T12:00:00Z", "latitude": 37.425100, "longitude": -122.084100, "metrics": { "temperature": 16.2, "ph": 7.5, "do": 8.4, "salinity": 1.2, "turbidity": 5.0 } },
-    { "timestamp": "2025-01-01T12:00:10Z", "latitude": 37.425140, "longitude": -122.084000, "metrics": { "temperature": 16.6, "ph": 7.5, "do": 8.6, "salinity": 1.2, "turbidity": 5.3 } },
-    { "timestamp": "2025-01-01T12:00:20Z", "latitude": 37.425180, "longitude": -122.083900, "metrics": { "temperature": 16.9, "ph": 7.4, "do": 8.8, "salinity": 1.2, "turbidity": 5.6 } },
-    { "timestamp": "2025-01-01T12:00:30Z", "latitude": 37.425230, "longitude": -122.083800, "metrics": { "temperature": 17.2, "ph": 7.3, "do": 9.0, "salinity": 1.3, "turbidity": 5.9 } },
-    { "timestamp": "2025-01-01T12:00:40Z", "latitude": 37.425300, "longitude": -122.083700, "metrics": { "temperature": 17.6, "ph": 7.2, "do": 9.1, "salinity": 1.3, "turbidity": 6.2 } }
+    { "timestamp": "2025-01-01T12:00:00Z", "latitude": 37.425100, "longitude": -122.084100, "depth": 2.1, "battery": 96, "metrics": { "temperature": 16.2, "ph": 7.5, "do": 8.4, "salinity": 1.2, "tds": 320, "conductivity": 640, "turbidity": 5.0, "light": 980, "uv": 1.8 } },
+    { "timestamp": "2025-01-01T12:00:10Z", "latitude": 37.425140, "longitude": -122.084000, "depth": 2.2, "battery": 95, "metrics": { "temperature": 16.6, "ph": 7.5, "do": 8.6, "salinity": 1.2, "tds": 325, "conductivity": 650, "turbidity": 5.3, "light": 930, "uv": 1.7 } },
+    { "timestamp": "2025-01-01T12:00:20Z", "latitude": 37.425180, "longitude": -122.083900, "depth": 2.4, "battery": 94, "metrics": { "temperature": 16.9, "ph": 7.4, "do": 8.8, "salinity": 1.2, "tds": 333, "conductivity": 666, "turbidity": 5.6, "light": 860, "uv": 1.6 } },
+    { "timestamp": "2025-01-01T12:00:30Z", "latitude": 37.425230, "longitude": -122.083800, "depth": 2.6, "battery": 93, "metrics": { "temperature": 17.2, "ph": 7.3, "do": 9.0, "salinity": 1.3, "tds": 343, "conductivity": 686, "turbidity": 5.9, "light": 780, "uv": 1.5 } },
+    { "timestamp": "2025-01-01T12:00:40Z", "latitude": 37.425300, "longitude": -122.083700, "depth": 2.9, "battery": 92, "metrics": { "temperature": 17.6, "ph": 7.2, "do": 9.1, "salinity": 1.3, "tds": 356, "conductivity": 712, "turbidity": 6.2, "light": 700, "uv": 1.4 } }
   ]
 }

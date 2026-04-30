@@ -50,6 +50,9 @@ Shader "AQUAScan/RealisticWater_Pro"
         _Smoothness   ("Smoothness", Range(0,1)) = 0.92
         _SpecularColor("Specular Color", Color) = (1,1,1,1)
         _FresnelPower ("Fresnel Power", Float) = 5.5
+        _ReflectionTopColor("Reflection Top", Color) = (0.42, 0.62, 0.78, 1)
+        _ReflectionHorizonColor("Reflection Horizon", Color) = (0.76, 0.84, 0.9, 1)
+        _ReflectionStrength("Reflection Strength", Range(0,1)) = 0.72
 
         [Header(Caustics (Optional))]
         _CausticsStrength("Caustics Strength", Range(0,1)) = 0.25
@@ -140,6 +143,9 @@ Shader "AQUAScan/RealisticWater_Pro"
                 float _Smoothness;
                 float4 _SpecularColor;
                 float _FresnelPower;
+                float4 _ReflectionTopColor;
+                float4 _ReflectionHorizonColor;
+                float _ReflectionStrength;
 
                 float _CausticsStrength;
                 float _CausticsScale;
@@ -302,7 +308,7 @@ half4 Frag(Varyings IN) : SV_Target
     float refrFade = saturate(lerp(1.0, 1.0 - _RefractionDepthFade, depth01));
     float2 distortion = normalWS.xz * _RefractionStrength * refrFade;
     float3 sceneCol = SampleSceneColor(uvScreen + distortion);
-    float refrAmount = (1.0 - depth01) * 0.65;
+    float refrAmount = (1.0 - depth01) * 0.35;
     float3 refracted = lerp(waterBase, sceneCol * waterBase, refrAmount);
 
     // ---- Foam ----
@@ -322,10 +328,15 @@ half4 Frag(Varyings IN) : SV_Target
     float NdotH = saturate(dot(normalWS, H));
     float NdotV = saturate(dot(normalWS, viewDir));
 
-    float specPower = lerp(32.0, 512.0, _Smoothness);
+    float specPower = lerp(24.0, 320.0, _Smoothness);
     float spec = pow(NdotH, specPower) * (0.04 + 0.96 * pow(1.0 - NdotV, 2.0));
     float fresnel = pow(1.0 - NdotV, _FresnelPower);
-    float3 lit = withFoam * (0.35 + 0.65 * NdotL) + spec * _SpecularColor.rgb * mainLight.color * 1.25 + fresnel * mainLight.color * 0.08;
+    float3 reflectionDir = reflect(-viewDir, normalWS);
+    float reflectionLerp = saturate(reflectionDir.y * 0.5 + 0.5);
+    float3 reflectionColor = lerp(_ReflectionHorizonColor.rgb, _ReflectionTopColor.rgb, pow(reflectionLerp, 0.65));
+    float3 lit = withFoam * (0.42 + 0.58 * NdotL);
+    lit += spec * _SpecularColor.rgb * mainLight.color * 0.9;
+    lit = lerp(lit, reflectionColor, saturate(fresnel * _ReflectionStrength));
 
     // ---- Caustics ----
     if (_CausticsStrength > 0.001)

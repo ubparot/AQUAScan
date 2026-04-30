@@ -22,12 +22,27 @@ namespace AQUAScan.Visualization
 
         private void Awake()
         {
-            _particleSystem = GetComponent<ParticleSystem>();
-            ConfigureParticleSystem();
+            EnsureParticleSystem();
+        }
+
+        private void OnEnable()
+        {
+            EnsureParticleSystem();
+        }
+
+        private void EnsureParticleSystem()
+        {
+            if (_particleSystem == null)
+                _particleSystem = GetComponent<ParticleSystem>();
+            if (_particleSystem != null)
+                ConfigureParticleSystem();
         }
 
         private void ConfigureParticleSystem()
         {
+            if (_particleSystem == null)
+                return;
+
             var main = _particleSystem.main;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             main.startLifetime = float.MaxValue;
@@ -39,6 +54,10 @@ namespace AQUAScan.Visualization
 
         public void Render(AquaMission mission, string metricId)
         {
+            EnsureParticleSystem();
+            if (_particleSystem == null || mission == null)
+                return;
+
             _samples = mission.Samples;
             _metricId = metricId.ToLowerInvariant();
             _metricDescriptor = MetricRegistry.GetOrCreate(metricId);
@@ -66,6 +85,7 @@ namespace AQUAScan.Visualization
 
         public void UpdateMetric(string metricId)
         {
+            EnsureParticleSystem();
             if (_samples == null || _samples.Count == 0)
                 return;
 
@@ -87,7 +107,9 @@ namespace AQUAScan.Visualization
 
         public void ToggleVisibility(bool visible)
         {
-            _particleSystem.gameObject.SetActive(visible);
+            EnsureParticleSystem();
+            if (_particleSystem != null)
+                _particleSystem.gameObject.SetActive(visible);
         }
 
         private Color EvaluateColor(AquaSample sample)

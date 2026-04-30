@@ -90,14 +90,25 @@ namespace AQUAScan.IO
                 if (Has("depth")) sample.DepthMeters = ParseNullableFloat(cells[Idx("depth")]);
                 if (Has("battery")) sample.BatteryPercent = ParseNullableFloat(cells[Idx("battery")]);
 
+                // Promote navigation/housekeeping values to metrics so they can be visualized like chemistry layers.
+                if (sample.DepthMeters.HasValue) sample.SetMetric("depth", sample.DepthMeters.Value);
+                if (sample.SpeedMps.HasValue) sample.SetMetric("speed", sample.SpeedMps.Value);
+                if (sample.BatteryPercent.HasValue) sample.SetMetric("battery", sample.BatteryPercent.Value);
+
                 // Known metrics
-                foreach (var metric in new[] { "temperature", "ph", "do", "salinity", "turbidity" })
+                foreach (var metric in new[] { "temperature", "ph", "do", "salinity", "tds", "conductivity", "turbidity", "light", "uv" })
                 {
                     if (Has(metric))
                     {
                         var val = ParseNullableFloat(cells[Idx(metric)]);
                         if (val.HasValue) sample.SetMetric(metric, val.Value);
                     }
+                }
+
+                if (Has("dissolved_oxygen") && !sample.Metrics.ContainsKey("do"))
+                {
+                    var val = ParseNullableFloat(cells[Idx("dissolved_oxygen")]);
+                    if (val.HasValue) sample.SetMetric("do", val.Value);
                 }
 
                 // Any remaining numeric columns become metrics as well to keep extensible.
@@ -172,12 +183,19 @@ namespace AQUAScan.IO
                 if (TryGetFloat(dict, "depth", out var depth)) sample.DepthMeters = depth;
                 if (TryGetFloat(dict, "battery", out var battery)) sample.BatteryPercent = battery;
 
+                if (sample.DepthMeters.HasValue) sample.SetMetric("depth", sample.DepthMeters.Value);
+                if (sample.SpeedMps.HasValue) sample.SetMetric("speed", sample.SpeedMps.Value);
+                if (sample.BatteryPercent.HasValue) sample.SetMetric("battery", sample.BatteryPercent.Value);
+
                 if (dict.TryGetValue("metrics", out var metricsObj) && metricsObj is Dictionary<string, object> metricsDict)
                 {
                     foreach (var kvp in metricsDict)
                     {
                         if (float.TryParse(kvp.Value.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var val))
-                            sample.SetMetric(kvp.Key, val);
+                        {
+                            string metricId = kvp.Key.Equals("dissolved_oxygen", StringComparison.OrdinalIgnoreCase) ? "do" : kvp.Key;
+                            sample.SetMetric(metricId, val);
+                        }
                     }
                 }
 
