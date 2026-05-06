@@ -88,10 +88,13 @@ namespace AQUAScan.IO
                 if (Has("heading")) sample.HeadingDeg = ParseNullableFloat(cells[Idx("heading")]);
                 if (Has("speed")) sample.SpeedMps = ParseNullableFloat(cells[Idx("speed")]);
                 if (Has("depth")) sample.DepthMeters = ParseNullableFloat(cells[Idx("depth")]);
+                if (!sample.DepthMeters.HasValue && TryEstimateSpoolDepthCsv(cells, Has, Idx, out var spoolDepth))
+                    sample.DepthMeters = spoolDepth;
                 if (Has("battery")) sample.BatteryPercent = ParseNullableFloat(cells[Idx("battery")]);
 
                 // Promote navigation/housekeeping values to metrics so they can be visualized like chemistry layers.
                 if (sample.DepthMeters.HasValue) sample.SetMetric("depth", sample.DepthMeters.Value);
+                if (TryEstimateSpoolLengthCsv(cells, Has, Idx, out var spoolLength)) sample.SetMetric("spool_cable_length", spoolLength);
                 if (sample.SpeedMps.HasValue) sample.SetMetric("speed", sample.SpeedMps.Value);
                 if (sample.BatteryPercent.HasValue) sample.SetMetric("battery", sample.BatteryPercent.Value);
 
@@ -181,9 +184,11 @@ namespace AQUAScan.IO
                 if (TryGetFloat(dict, "heading", out var heading)) sample.HeadingDeg = heading;
                 if (TryGetFloat(dict, "speed", out var speed)) sample.SpeedMps = speed;
                 if (TryGetFloat(dict, "depth", out var depth)) sample.DepthMeters = depth;
+                if (!sample.DepthMeters.HasValue && TryEstimateSpoolDepthJson(dict, out var spoolDepth)) sample.DepthMeters = spoolDepth;
                 if (TryGetFloat(dict, "battery", out var battery)) sample.BatteryPercent = battery;
 
                 if (sample.DepthMeters.HasValue) sample.SetMetric("depth", sample.DepthMeters.Value);
+                if (TryEstimateSpoolLengthJson(dict, out var spoolLength)) sample.SetMetric("spool_cable_length", spoolLength);
                 if (sample.SpeedMps.HasValue) sample.SetMetric("speed", sample.SpeedMps.Value);
                 if (sample.BatteryPercent.HasValue) sample.SetMetric("battery", sample.BatteryPercent.Value);
 
@@ -239,6 +244,159 @@ namespace AQUAScan.IO
                 valid = false;
             }
             return valid;
+        }
+
+        private static bool TryEstimateSpoolDepthCsv(string[] cells, Func<string, bool> has, Func<string, int> idx, out float depthMeters)
+        {
+            depthMeters = 0f;
+            if (!TryGetSpoolRotationsCsv(cells, has, idx, out var rotations))
+                return false;
+
+            var geometry = ReadSpoolGeometryCsv(cells, has, idx);
+            depthMeters = SpoolDepthEstimator.EstimateDepthMeters(rotations, geometry);
+            return true;
+        }
+
+        private static bool TryEstimateSpoolLengthCsv(string[] cells, Func<string, bool> has, Func<string, int> idx, out float cableLengthMeters)
+        {
+            cableLengthMeters = 0f;
+            if (!TryGetSpoolRotationsCsv(cells, has, idx, out var rotations))
+                return false;
+
+            var geometry = ReadSpoolGeometryCsv(cells, has, idx);
+            cableLengthMeters = SpoolDepthEstimator.EstimateCableLengthMeters(rotations, geometry);
+            return true;
+        }
+
+        private static bool TryGetSpoolRotationsCsv(string[] cells, Func<string, bool> has, Func<string, int> idx, out float rotations)
+        {
+            rotations = 0f;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_rotations", out rotations))
+                return true;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_rotation", out rotations))
+                return true;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_revolutions", out rotations))
+                return true;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_degrees", out var degrees))
+            {
+                rotations = SpoolDepthEstimator.RotationsFromDegrees(degrees);
+                return true;
+            }
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_encoder_ticks", out var ticks) ||
+                TryGetOptionalCsvFloat(cells, has, idx, "spool_ticks", out ticks))
+            {
+                float ticksPerRevolution = SpoolDepthEstimator.Geometry.Default.RotationToSpoolRatio;
+                if (!TryGetOptionalCsvFloat(cells, has, idx, "spool_ticks_per_revolution", out ticksPerRevolution) &&
+                    !TryGetOptionalCsvFloat(cells, has, idx, "encoder_ticks_per_revolution", out ticksPerRevolution))
+                {
+                    ticksPerRevolution = 4096f;
+                }
+
+                rotations = SpoolDepthEstimator.RotationsFromEncoderTicks(ticks, ticksPerRevolution);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static SpoolDepthEstimator.Geometry ReadSpoolGeometryCsv(string[] cells, Func<string, bool> has, Func<string, int> idx)
+        {
+            var geometry = SpoolDepthEstimator.Geometry.Default;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_core_radius_m", out var coreRadius)) geometry.CoreRadiusMeters = coreRadius;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "cable_diameter_m", out var cableDiameter)) geometry.CableDiameterMeters = cableDiameter;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_width_m", out var spoolWidth)) geometry.SpoolWidthMeters = spoolWidth;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_zero_rotations", out var zeroRotations)) geometry.ZeroRotations = zeroRotations;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_rotation_to_spool_ratio", out var ratio)) geometry.RotationToSpoolRatio = ratio;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "probe_vertical_efficiency", out var efficiency)) geometry.VerticalEfficiency = efficiency;
+            if (TryGetOptionalCsvFloat(cells, has, idx, "spool_direction", out var direction)) geometry.InvertDirection = direction < 0f;
+            return geometry;
+        }
+
+        private static bool TryGetOptionalCsvFloat(string[] cells, Func<string, bool> has, Func<string, int> idx, string key, out float value)
+        {
+            value = 0f;
+            if (!has(key))
+                return false;
+
+            int cellIndex = idx(key);
+            if (cellIndex < 0 || cellIndex >= cells.Length)
+                return false;
+
+            var parsed = ParseNullableFloat(cells[cellIndex]);
+            if (!parsed.HasValue)
+                return false;
+
+            value = parsed.Value;
+            return true;
+        }
+
+        private static bool TryEstimateSpoolDepthJson(Dictionary<string, object> dict, out float depthMeters)
+        {
+            depthMeters = 0f;
+            if (!TryGetSpoolRotationsJson(dict, out var rotations))
+                return false;
+
+            var geometry = ReadSpoolGeometryJson(dict);
+            depthMeters = SpoolDepthEstimator.EstimateDepthMeters(rotations, geometry);
+            return true;
+        }
+
+        private static bool TryEstimateSpoolLengthJson(Dictionary<string, object> dict, out float cableLengthMeters)
+        {
+            cableLengthMeters = 0f;
+            if (!TryGetSpoolRotationsJson(dict, out var rotations))
+                return false;
+
+            var geometry = ReadSpoolGeometryJson(dict);
+            cableLengthMeters = SpoolDepthEstimator.EstimateCableLengthMeters(rotations, geometry);
+            return true;
+        }
+
+        private static bool TryGetSpoolRotationsJson(Dictionary<string, object> dict, out float rotations)
+        {
+            rotations = 0f;
+            if (TryGetFloatAny(dict, out rotations, "spool_rotations", "spool_rotation", "spool_revolutions"))
+                return true;
+            if (TryGetFloatAny(dict, out var degrees, "spool_degrees"))
+            {
+                rotations = SpoolDepthEstimator.RotationsFromDegrees(degrees);
+                return true;
+            }
+            if (TryGetFloatAny(dict, out var ticks, "spool_encoder_ticks", "spool_ticks"))
+            {
+                if (!TryGetFloatAny(dict, out var ticksPerRevolution, "spool_ticks_per_revolution", "encoder_ticks_per_revolution"))
+                    ticksPerRevolution = 4096f;
+
+                rotations = SpoolDepthEstimator.RotationsFromEncoderTicks(ticks, ticksPerRevolution);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static SpoolDepthEstimator.Geometry ReadSpoolGeometryJson(Dictionary<string, object> dict)
+        {
+            var geometry = SpoolDepthEstimator.Geometry.Default;
+            if (TryGetFloatAny(dict, out var coreRadius, "spool_core_radius_m")) geometry.CoreRadiusMeters = coreRadius;
+            if (TryGetFloatAny(dict, out var cableDiameter, "cable_diameter_m")) geometry.CableDiameterMeters = cableDiameter;
+            if (TryGetFloatAny(dict, out var spoolWidth, "spool_width_m")) geometry.SpoolWidthMeters = spoolWidth;
+            if (TryGetFloatAny(dict, out var zeroRotations, "spool_zero_rotations")) geometry.ZeroRotations = zeroRotations;
+            if (TryGetFloatAny(dict, out var ratio, "spool_rotation_to_spool_ratio")) geometry.RotationToSpoolRatio = ratio;
+            if (TryGetFloatAny(dict, out var efficiency, "probe_vertical_efficiency")) geometry.VerticalEfficiency = efficiency;
+            if (TryGetFloatAny(dict, out var direction, "spool_direction")) geometry.InvertDirection = direction < 0f;
+            return geometry;
+        }
+
+        private static bool TryGetFloatAny(Dictionary<string, object> dict, out float value, params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                if (TryGetFloat(dict, key, out value))
+                    return true;
+            }
+
+            value = 0f;
+            return false;
         }
 
         private static double ParseDoubleSafe(string value)

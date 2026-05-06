@@ -1,5 +1,6 @@
 using System.Collections;
 using System.IO;
+using AQUAScan.AI;
 using AQUAScan.Controllers;
 using AQUAScan.Control;
 using UnityEngine;
@@ -59,6 +60,14 @@ namespace AQUAScan.Visualization
         private Sprite _inputSprite;
         private Sprite _pillSprite;
         private Text _modeBadge;
+        private AquaAiInferenceController _aiInference;
+        private HudTab _activeHudTab = HudTab.SensorData;
+        private Button _drivingTabButton;
+        private Button _aiTabButton;
+        private Button _sensorTabButton;
+        private RectTransform _drivingTabPanel;
+        private RectTransform _aiTabPanel;
+        private RectTransform _sensorTabPanel;
 
         private Transform _generatedRoot;
         private GameObject _waterPlane;
@@ -71,6 +80,13 @@ namespace AQUAScan.Visualization
         private bool _visualsStyled;
         private bool _refreshQueued;
         private bool _hudBuilt;
+
+        private enum HudTab
+        {
+            Driving,
+            AiInference,
+            SensorData
+        }
 
         private IEnumerator Start()
         {
@@ -129,12 +145,13 @@ namespace AQUAScan.Visualization
         private void CacheSceneReferences()
         {
             _controller = GetComponent<AquaMissionController>();
+            _aiInference = GetComponent<AquaAiInferenceController>();
             _heatmap = GetComponent<HeatmapSurface>();
             _canvas = FindObjectOfType<Canvas>();
             _canvasScaler = _canvas != null ? _canvas.GetComponent<CanvasScaler>() : null;
             _mainCamera = Camera.main != null ? Camera.main : FindObjectOfType<Camera>();
             _orbit = _mainCamera != null ? _mainCamera.GetComponent<CameraBoatOrbit>() : null;
-            _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            _font = ResolveUiFont();
             _panelSprite = ResolvePanelSprite();
             _inputSprite = ResolveInputSprite();
             _pillSprite = ResolvePillSprite();
@@ -149,6 +166,13 @@ namespace AQUAScan.Visualization
             _canvas = null;
             _canvasScaler = null;
             _modeBadge = null;
+            _aiInference = null;
+            _drivingTabButton = null;
+            _aiTabButton = null;
+            _sensorTabButton = null;
+            _drivingTabPanel = null;
+            _aiTabPanel = null;
+            _sensorTabPanel = null;
             _pillSprite = null;
             _generatedRoot = null;
             _waterPlane = null;
@@ -198,6 +222,41 @@ namespace AQUAScan.Visualization
                 s_pillSprite = CreateRoundedSprite("AquaScan Rounded Pill", 31);
 
             return s_pillSprite;
+        }
+
+        private static Font ResolveUiFont()
+        {
+            var fontNames = new[] { "Segoe UI", "Arial", "Calibri", "Verdana" };
+            foreach (var fontName in fontNames)
+            {
+                var font = Font.CreateDynamicFontFromOSFont(fontName, 18);
+                if (font != null)
+                {
+                    ConfigureFontTexture(font);
+                    return font;
+                }
+            }
+
+            var builtin = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            if (builtin != null)
+            {
+                ConfigureFontTexture(builtin);
+                return builtin;
+            }
+
+            var legacy = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            ConfigureFontTexture(legacy);
+            return legacy;
+        }
+
+        private static void ConfigureFontTexture(Font font)
+        {
+            var texture = font != null && font.material != null ? font.material.mainTexture : null;
+            if (texture == null)
+                return;
+
+            texture.filterMode = FilterMode.Bilinear;
+            texture.anisoLevel = 1;
         }
 
 #if UNITY_EDITOR
@@ -506,6 +565,10 @@ namespace AQUAScan.Visualization
 
             if (_heatmap != null)
             {
+                _heatmap.NormalizeToCollectedRange = true;
+                _heatmap.DataContrast = 1.45f;
+                _heatmap.ConfigurePresentation(1.15f, 3.9f, 0.36f, 0.18f);
+
                 var heatmapRenderer = _heatmap.GetComponent<MeshRenderer>();
                 if (heatmapRenderer != null)
                     StyleHeatmapMaterial(heatmapRenderer);
@@ -598,7 +661,31 @@ namespace AQUAScan.Visualization
         {
             var material = renderer.sharedMaterial;
             if (material == null)
+            {
+                var shader = Shader.Find("AQUAScan/HeatmapVertexColor") ?? Shader.Find("Sprites/Default");
+                if (shader == null)
+                    return;
+
+                material = new Material(shader)
+                {
+                    name = "AquaScan Runtime Heatmap"
+                };
+                renderer.sharedMaterial = material;
+            }
+
+            if (material.shader != null && material.shader.name == "AQUAScan/HeatmapVertexColor")
+            {
+                if (material.HasProperty("_Color"))
+                    material.SetColor("_Color", Color.white);
+                if (material.HasProperty("_AlphaScale"))
+                    material.SetFloat("_AlphaScale", 6.0f);
+                if (material.HasProperty("_Emission"))
+                    material.SetFloat("_Emission", 1.35f);
+
+                renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
                 return;
+            }
 
             ApplyWaterTextures(material);
             if (material.HasProperty("_ShallowColor"))
@@ -648,11 +735,11 @@ namespace AQUAScan.Visualization
             if (material.HasProperty("_HeatmapTintStrength"))
                 material.SetFloat("_HeatmapTintStrength", 0.95f);
             if (material.HasProperty("_HeatmapEmission"))
-                material.SetFloat("_HeatmapEmission", 0.08f);
+                material.SetFloat("_HeatmapEmission", 0.5f);
             if (material.HasProperty("_HeatmapAlphaMin"))
                 material.SetFloat("_HeatmapAlphaMin", 0.02f);
             if (material.HasProperty("_HeatmapAlphaMax"))
-                material.SetFloat("_HeatmapAlphaMax", 0.18f);
+                material.SetFloat("_HeatmapAlphaMax", 1f);
             if (material.HasProperty("_Smoothness"))
                 material.SetFloat("_Smoothness", 0.68f);
             if (material.HasProperty("_SpecularColor"))
@@ -821,6 +908,8 @@ namespace AQUAScan.Visualization
 
         private void EnsureMissionUiControls(RectTransform canvasRect)
         {
+            EnsureAiInferenceController();
+
             if (!_controller.MetricDropdown)
                 _controller.MetricDropdown = EnsureDropdownControl("MetricDropdown", canvasRect);
             if (!_controller.TrackToggle)
@@ -845,6 +934,26 @@ namespace AQUAScan.Visualization
                 _controller.LegendGradient = EnsureRawImageControl("LegendGradient", canvasRect);
             if (!_controller.CurrentValueLabel)
                 _controller.CurrentValueLabel = EnsureText("CurrentValueLabel", canvasRect, "Probe sample", 14, FontStyle.Bold, TextPrimary);
+
+            if (_controller.TrackToggle)
+                _controller.TrackToggle.SetIsOnWithoutNotify(true);
+            if (_controller.PointsToggle)
+                _controller.PointsToggle.SetIsOnWithoutNotify(true);
+            if (_controller.HeatmapToggle)
+                _controller.HeatmapToggle.SetIsOnWithoutNotify(true);
+        }
+
+        private void EnsureAiInferenceController()
+        {
+            if (_controller == null)
+                return;
+
+            if (_aiInference == null)
+                _aiInference = GetComponent<AquaAiInferenceController>();
+            if (_aiInference == null)
+                _aiInference = gameObject.AddComponent<AquaAiInferenceController>();
+
+            _controller.AiInference = _aiInference;
         }
 
         private static RectTransform GetRect(Component component)
@@ -881,37 +990,54 @@ namespace AQUAScan.Visualization
             var heading = EnsureText("ControlsHeading", panel, "AquaScan Control", 19, FontStyle.Bold, TextPrimary);
             SetLocalRect(heading.rectTransform, new Vector2(20f, -18f), new Vector2(240f, 26f));
 
-            var subheading = EnsureText("ControlsSubheading", panel, "Semi-autonomous sampling and propulsion", 12, FontStyle.Normal, TextMuted);
-            SetLocalRect(subheading.rectTransform, new Vector2(20f, -44f), new Vector2(280f, 18f));
+            var subheading = EnsureText("ControlsSubheading", panel, "Driving, AI prediction, and mission sensor layers", 12, FontStyle.Normal, TextMuted);
+            SetLocalRect(subheading.rectTransform, new Vector2(20f, -44f), new Vector2(300f, 18f));
 
-            var missionCard = CreateInsetBlock("MissionCard", panel, new Vector2(16f, -72f), new Vector2(328f, 270f));
-            var liveCard = CreateInsetBlock("LiveCard", panel, new Vector2(16f, -354f), new Vector2(328f, 242f));
+            _drivingTabButton = EnsureTabButton("DrivingTabButton", panel, "Drive", HudTab.Driving);
+            _aiTabButton = EnsureTabButton("AiTabButton", panel, "AI", HudTab.AiInference);
+            _sensorTabButton = EnsureTabButton("SensorTabButton", panel, "Sensors", HudTab.SensorData);
+            PlaceControl(_drivingTabButton.transform as RectTransform, panel, new Vector2(16f, -72f), new Vector2(102f, 34f));
+            PlaceControl(_aiTabButton.transform as RectTransform, panel, new Vector2(129f, -72f), new Vector2(86f, 34f));
+            PlaceControl(_sensorTabButton.transform as RectTransform, panel, new Vector2(226f, -72f), new Vector2(118f, 34f));
 
-            var missionHeading = EnsureText("MissionHeading", missionCard, "GPS + DEPTH DATASET", 11, FontStyle.Bold, WarmAccent);
-            SetLocalRect(missionHeading.rectTransform, new Vector2(14f, -12f), new Vector2(160f, 18f));
+            _drivingTabPanel = CreateInsetBlock("DrivingTabPanel", panel, new Vector2(16f, -118f), new Vector2(328f, 478f));
+            _aiTabPanel = CreateInsetBlock("AiInferenceTabPanel", panel, new Vector2(16f, -118f), new Vector2(328f, 478f));
+            _sensorTabPanel = CreateInsetBlock("SensorDataTabPanel", panel, new Vector2(16f, -118f), new Vector2(328f, 478f));
 
-            var metricLabel = EnsureText("MetricLabel", missionCard, "Metric", 12, FontStyle.Bold, TextMuted);
-            SetLocalRect(metricLabel.rectTransform, new Vector2(14f, -38f), new Vector2(130f, 20f));
-            PlaceControl(_controller.MetricDropdown?.transform as RectTransform, missionCard, new Vector2(14f, -62f), new Vector2(300f, 38f));
+            BuildLiveCard(_drivingTabPanel);
+            BuildAiInferenceTab(_aiTabPanel);
+            BuildSensorDataTab(_sensorTabPanel);
+            SetActiveHudTab(_activeHudTab);
+            StyleControlsIn(panel);
+        }
 
-            var layersLabel = EnsureText("LayersLabel", missionCard, "Layers", 12, FontStyle.Bold, TextMuted);
-            SetLocalRect(layersLabel.rectTransform, new Vector2(14f, -112f), new Vector2(130f, 20f));
+        private void BuildSensorDataTab(RectTransform panel)
+        {
+            var missionHeading = EnsureText("MissionHeading", panel, "GPS + DEPTH DATASET", 11, FontStyle.Bold, WarmAccent);
+            SetLocalRect(missionHeading.rectTransform, new Vector2(14f, -12f), new Vector2(180f, 18f));
+
+            var metricLabel = EnsureText("MetricLabel", panel, "Metric", 12, FontStyle.Bold, TextMuted);
+            SetLocalRect(metricLabel.rectTransform, new Vector2(14f, -42f), new Vector2(130f, 20f));
+            PlaceControl(_controller.MetricDropdown?.transform as RectTransform, panel, new Vector2(14f, -66f), new Vector2(300f, 38f));
+
+            var layersLabel = EnsureText("LayersLabel", panel, "Layers", 12, FontStyle.Bold, TextMuted);
+            SetLocalRect(layersLabel.rectTransform, new Vector2(14f, -124f), new Vector2(130f, 20f));
             SetToggleLabel(_controller.TrackToggle, "Track");
             SetToggleLabel(_controller.PointsToggle, "Points");
             SetToggleLabel(_controller.HeatmapToggle, "Heat");
-            PlaceControl(_controller.TrackToggle?.transform as RectTransform, missionCard, new Vector2(14f, -138f), new Vector2(96f, 28f));
-            PlaceControl(_controller.PointsToggle?.transform as RectTransform, missionCard, new Vector2(116f, -138f), new Vector2(96f, 28f));
-            PlaceControl(_controller.HeatmapToggle?.transform as RectTransform, missionCard, new Vector2(218f, -138f), new Vector2(96f, 28f));
+            PlaceControl(_controller.TrackToggle?.transform as RectTransform, panel, new Vector2(14f, -150f), new Vector2(96f, 28f));
+            PlaceControl(_controller.PointsToggle?.transform as RectTransform, panel, new Vector2(116f, -150f), new Vector2(96f, 28f));
+            PlaceControl(_controller.HeatmapToggle?.transform as RectTransform, panel, new Vector2(218f, -150f), new Vector2(96f, 28f));
 
-            var pathLabel = EnsureText("PathLabel", missionCard, "CSV / JSON output", 12, FontStyle.Bold, TextMuted);
-            SetLocalRect(pathLabel.rectTransform, new Vector2(14f, -178f), new Vector2(130f, 20f));
+            var pathLabel = EnsureText("PathLabel", panel, "CSV / JSON output", 12, FontStyle.Bold, TextMuted);
+            SetLocalRect(pathLabel.rectTransform, new Vector2(14f, -206f), new Vector2(160f, 20f));
 
             if (_controller.PathInputField != null)
             {
                 if (_controller.PathInputField.placeholder is Text placeholder)
                     placeholder.text = "StreamingAssets file or absolute path";
 
-                PlaceControl(_controller.PathInputField.transform as RectTransform, missionCard, new Vector2(14f, -202f), new Vector2(196f, 38f));
+                PlaceControl(_controller.PathInputField.transform as RectTransform, panel, new Vector2(14f, -232f), new Vector2(196f, 38f));
             }
 
             if (_controller.LoadButton != null)
@@ -920,11 +1046,72 @@ namespace AQUAScan.Visualization
                 if (loadLabel != null)
                     loadLabel.text = "Load";
 
-                PlaceControl(_controller.LoadButton.transform as RectTransform, missionCard, new Vector2(220f, -202f), new Vector2(94f, 38f));
+                PlaceControl(_controller.LoadButton.transform as RectTransform, panel, new Vector2(220f, -232f), new Vector2(94f, 38f));
             }
+        }
 
-            BuildLiveCard(liveCard);
-            StyleControlsIn(panel);
+        private void BuildAiInferenceTab(RectTransform panel)
+        {
+            EnsureAiInferenceController();
+            var aiHeading = EnsureText("AiHeading", panel, "MULTI-TASK AI INFERENCE", 11, FontStyle.Bold, WarmAccent);
+            SetLocalRect(aiHeading.rectTransform, new Vector2(14f, -12f), new Vector2(220f, 18f));
+
+            _aiInference.StatusText = EnsureText("AiStatusText", panel, "Loading model artifacts", 12, FontStyle.Normal, TextMuted);
+            PlaceControl(_aiInference.StatusText.rectTransform, panel, new Vector2(14f, -38f), new Vector2(300f, 42f));
+
+            _aiInference.OxygenText = EnsureText("AiOxygenText", panel, "Current O2\n<size=26><b>--</b></size> mg/L", 13, FontStyle.Bold, TextPrimary);
+            PlaceControl(_aiInference.OxygenText.rectTransform, panel, new Vector2(14f, -94f), new Vector2(142f, 70f));
+
+            _aiInference.BloomText = EnsureText("AiBloomText", panel, "Bloom Risk\n<size=26><b>--</b></size>", 13, FontStyle.Bold, TextPrimary);
+            PlaceControl(_aiInference.BloomText.rectTransform, panel, new Vector2(172f, -94f), new Vector2(142f, 70f));
+
+            _aiInference.AnomalyText = EnsureText("AiAnomalyText", panel, "Anomaly\n<size=26><b>--</b></size>", 13, FontStyle.Bold, TextPrimary);
+            PlaceControl(_aiInference.AnomalyText.rectTransform, panel, new Vector2(14f, -182f), new Vector2(142f, 70f));
+
+            _aiInference.ForecastText = EnsureText("AiForecastText", panel, "Forecast\n+30 --  +60 --  +120 --", 13, FontStyle.Bold, TextPrimary);
+            PlaceControl(_aiInference.ForecastText.rectTransform, panel, new Vector2(14f, -274f), new Vector2(300f, 64f));
+
+            _aiInference.RunInferenceButton = EnsureButtonControl("RunInferenceButton", panel, "Run Now");
+            PlaceControl(_aiInference.RunInferenceButton.transform as RectTransform, panel, new Vector2(198f, -184f), new Vector2(116f, 42f));
+            _aiInference.WireCallbacks();
+            _aiInference.RefreshPrediction();
+        }
+
+        private Button EnsureTabButton(string name, RectTransform parent, string label, HudTab tab)
+        {
+            var button = EnsureButtonControl(name, parent, label);
+            button.onClick.RemoveAllListeners();
+            button.onClick.AddListener(() => SetActiveHudTab(tab));
+            return button;
+        }
+
+        private void SetActiveHudTab(HudTab tab)
+        {
+            _activeHudTab = tab;
+            if (_drivingTabPanel != null)
+                _drivingTabPanel.gameObject.SetActive(tab == HudTab.Driving);
+            if (_aiTabPanel != null)
+                _aiTabPanel.gameObject.SetActive(tab == HudTab.AiInference);
+            if (_sensorTabPanel != null)
+                _sensorTabPanel.gameObject.SetActive(tab == HudTab.SensorData);
+
+            StyleHudTabButton(_drivingTabButton, tab == HudTab.Driving);
+            StyleHudTabButton(_aiTabButton, tab == HudTab.AiInference);
+            StyleHudTabButton(_sensorTabButton, tab == HudTab.SensorData);
+        }
+
+        private void StyleHudTabButton(Button button, bool active)
+        {
+            if (button == null)
+                return;
+
+            var image = button.GetComponent<Image>();
+            if (image != null)
+                image.color = active ? AccentColor : FieldColor;
+
+            var label = button.GetComponentInChildren<Text>(true);
+            if (label != null)
+                label.color = active ? Color.white : TextMuted;
         }
 
         private void BuildRightPanel(RectTransform panel)
@@ -1270,15 +1457,11 @@ namespace AQUAScan.Visualization
 
                 if (text == _controller?.PlayPauseText)
                 {
-                    text.font = _font;
-                    text.fontStyle = FontStyle.Bold;
-                    text.fontSize = 18;
-                    text.color = TextPrimary;
+                    ApplyTextStyle(text, text.text, 18, FontStyle.Bold, TextPrimary);
                     continue;
                 }
 
-                text.font = _font;
-                text.color = TextPrimary;
+                ApplyTextStyle(text, text.text, Mathf.Max(text.fontSize, 13), text.fontStyle, TextPrimary);
                 if (text.fontSize <= 12)
                     text.fontSize = 13;
             }
@@ -1346,17 +1529,13 @@ namespace AQUAScan.Visualization
 
             if (dropdown.captionText != null)
             {
-                dropdown.captionText.color = TextPrimary;
-                dropdown.captionText.font = _font;
-                dropdown.captionText.fontSize = 15;
+                ApplyTextStyle(dropdown.captionText, dropdown.captionText.text, 15, dropdown.captionText.fontStyle, TextPrimary);
                 dropdown.captionText.alignment = TextAnchor.MiddleLeft;
             }
 
             if (dropdown.itemText != null)
             {
-                dropdown.itemText.color = TextPrimary;
-                dropdown.itemText.font = _font;
-                dropdown.itemText.fontSize = 14;
+                ApplyTextStyle(dropdown.itemText, dropdown.itemText.text, 14, dropdown.itemText.fontStyle, TextPrimary);
             }
 
             var arrow = dropdown.transform.Find("Arrow")?.GetComponent<Image>();
@@ -1418,10 +1597,7 @@ namespace AQUAScan.Visualization
             var text = button.GetComponentInChildren<Text>(true);
             if (text != null)
             {
-                text.color = TextPrimary;
-                text.font = _font;
-                text.fontStyle = FontStyle.Bold;
-                text.fontSize = button == _controller?.ConnectButton || button == _controller?.EStopButton ? 13 : 15;
+                ApplyTextStyle(text, text.text, button == _controller?.ConnectButton || button == _controller?.EStopButton ? 13 : 15, FontStyle.Bold, TextPrimary);
                 text.alignment = TextAnchor.MiddleCenter;
             }
 
@@ -1452,10 +1628,7 @@ namespace AQUAScan.Visualization
             var text = button.GetComponentInChildren<Text>(true);
             if (text != null)
             {
-                text.color = TextPrimary;
-                text.font = _font;
-                text.fontStyle = FontStyle.Bold;
-                text.fontSize = 16;
+                ApplyTextStyle(text, text.text, 16, FontStyle.Bold, TextPrimary);
                 text.alignment = TextAnchor.MiddleCenter;
             }
         }
@@ -1496,10 +1669,7 @@ namespace AQUAScan.Visualization
             var label = toggle.GetComponentInChildren<Text>(true);
             if (label != null)
             {
-                label.color = TextPrimary;
-                label.font = _font;
-                label.fontSize = 13;
-                label.fontStyle = FontStyle.Bold;
+                ApplyTextStyle(label, label.text, 13, FontStyle.Bold, TextPrimary);
                 label.alignment = TextAnchor.MiddleLeft;
                 label.horizontalOverflow = HorizontalWrapMode.Overflow;
                 label.verticalOverflow = VerticalWrapMode.Truncate;
@@ -1539,17 +1709,12 @@ namespace AQUAScan.Visualization
 
             if (input.placeholder is Text placeholder)
             {
-                placeholder.font = _font;
-                placeholder.fontSize = 13;
-                placeholder.fontStyle = FontStyle.Italic;
-                placeholder.color = new Color(TextMuted.r, TextMuted.g, TextMuted.b, 0.6f);
+                ApplyTextStyle(placeholder, placeholder.text, 13, FontStyle.Italic, new Color(TextMuted.r, TextMuted.g, TextMuted.b, 0.6f));
             }
 
             if (input.textComponent != null)
             {
-                input.textComponent.font = _font;
-                input.textComponent.fontSize = 14;
-                input.textComponent.color = TextPrimary;
+                ApplyTextStyle(input.textComponent, input.textComponent.text, 14, input.textComponent.fontStyle, TextPrimary);
             }
 
             input.caretColor = AccentColor;
@@ -1806,21 +1971,33 @@ namespace AQUAScan.Visualization
             var existing = parent.Find(name)?.GetComponent<Text>();
             if (existing != null)
             {
-                existing.text = value;
+                ApplyTextStyle(existing, value, fontSize, fontStyle, color);
                 return existing;
             }
 
             var text = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text)).GetComponent<Text>();
             text.transform.SetParent(parent, false);
-            text.font = _font;
-            text.text = value;
-            text.fontSize = fontSize;
-            text.fontStyle = fontStyle;
-            text.color = color;
+            ApplyTextStyle(text, value, fontSize, fontStyle, color);
             text.alignment = TextAnchor.MiddleLeft;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
             return text;
+        }
+
+        private void ApplyTextStyle(Text text, string value, int fontSize, FontStyle fontStyle, Color color)
+        {
+            if (text == null)
+                return;
+
+            text.font = _font != null ? _font : Resources.GetBuiltinResource<Font>("Arial.ttf");
+            ConfigureFontTexture(text.font);
+            text.text = value;
+            text.fontSize = fontSize;
+            text.fontStyle = fontStyle;
+            text.color = color;
+            text.supportRichText = true;
+            text.resizeTextForBestFit = false;
+            text.alignByGeometry = true;
         }
 
         private InputField EnsureInputField(string name, RectTransform parent, string placeholderText)
@@ -1976,6 +2153,7 @@ namespace AQUAScan.Visualization
 
         private Toggle EnsureToggleControl(string name, RectTransform parent, string labelText)
         {
+            bool existed = parent != null && parent.Find(name) != null;
             var rect = EnsurePanel(name, parent);
             var toggle = GetOrAddComponent<Toggle>(rect.gameObject);
 
@@ -1993,6 +2171,8 @@ namespace AQUAScan.Visualization
 
             toggle.targetGraphic = backgroundImage;
             toggle.graphic = checkmarkImage;
+            if (!existed)
+                toggle.SetIsOnWithoutNotify(labelText != "Wi-Fi motors");
             return toggle;
         }
 

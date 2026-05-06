@@ -154,6 +154,14 @@ namespace AQUAScan.Config
             ));
 
             AddOrUpdate(new MetricDescriptor(
+                "spool_cable_length",
+                "Spool Cable",
+                "m",
+                new Vector2(0, 30),
+                BuildGradient(new Color(0.7f, 1f, 0.95f), new Color(0.0f, 0.42f, 0.5f))
+            ));
+
+            AddOrUpdate(new MetricDescriptor(
                 "speed",
                 "Speed",
                 "m/s",

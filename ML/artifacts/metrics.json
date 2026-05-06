@@ -1,0 +1,22 @@
+{
+  "oxygen_rmse": 1.9230433068638502,
+  "forecast_rmse": 2.0824142590442354,
+  "bloom_accuracy": 0.5948275862068966,
+  "anomaly_accuracy": 0.9353448275862069,
+  "anomaly_baseline": {
+    "name": "IsolationForest",
+    "mean_score": 0.25693705838428543,
+    "max_score": 1.0
+  },
+  "onnx": {
+    "exported": true,
+    "validated": true,
+    "max_abs_diff": 9.5367431640625e-07
+  },
+  "data": {
+    "real_missions": 3,
+    "synthetic_missions": 12,
+    "windows": 1158,
+    "eval_windows": 232
+  }
+}

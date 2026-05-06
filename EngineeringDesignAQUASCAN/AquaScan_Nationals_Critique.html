@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>AquaScan TSA Engineering Design Nationals Critique</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.55in;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #152033;
+      font-family: "Aptos", "Segoe UI", Arial, sans-serif;
+      font-size: 10.6pt;
+      line-height: 1.36;
+      background: #ffffff;
+    }
+
+    .cover {
+      min-height: 9.8in;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 0.1in 0 0;
+    }
+
+    .kicker {
+      color: #0f4c8a;
+      font-size: 9.2pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0.28in 0 0.12in;
+      font-size: 34pt;
+      line-height: 0.98;
+      letter-spacing: 0;
+      color: #08396f;
+    }
+
+    .subtitle {
+      max-width: 6.8in;
+      color: #43536c;
+      font-size: 14pt;
+      line-height: 1.28;
+      margin: 0;
+    }
+
+    .cover-box {
+      border-top: 4px solid #0f4c8a;
+      padding-top: 0.18in;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.22in;
+      margin-top: 0.55in;
+    }
+
+    .meta-label {
+      color: #5b6a7f;
+      font-size: 8.8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 0.04in;
+    }
+
+    .meta-value {
+      font-size: 11pt;
+      font-weight: 700;
+      color: #1d2d44;
+    }
+
+    .note {
+      border-left: 4px solid #d97904;
+      background: #fff7ed;
+      padding: 0.12in 0.16in;
+      margin-top: 0.22in;
+      color: #56350b;
+    }
+
+    h2 {
+      margin: 0.28in 0 0.1in;
+      padding-top: 0.02in;
+      color: #08396f;
+      font-size: 18pt;
+      line-height: 1.1;
+      break-after: avoid;
+    }
+
+    h3 {
+      margin: 0.18in 0 0.06in;
+      color: #152033;
+      font-size: 12.2pt;
+      break-after: avoid;
+    }
+
+    p {
+      margin: 0 0 0.08in;
+    }
+
+    ul {
+      margin: 0.04in 0 0.12in 0.18in;
+      padding: 0;
+    }
+
+    li {
+      margin: 0.035in 0;
+    }
+
+    .section {
+      break-inside: avoid;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.13in;
+    }
+
+    .card {
+      border: 1px solid #d7dee8;
+      border-radius: 6px;
+      padding: 0.12in;
+      background: #fbfcfe;
+      break-inside: avoid;
+    }
+
+    .card strong {
+      color: #08396f;
+    }
+
+    .priority {
+      font-weight: 800;
+      color: #a43f00;
+    }
+
+    .rubric {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.1in 0 0.18in;
+      break-inside: avoid;
+    }
+
+    .rubric th,
+    .rubric td {
+      border: 1px solid #d7dee8;
+      padding: 0.07in;
+      vertical-align: top;
+    }
+
+    .rubric th {
+      background: #0f4c8a;
+      color: #ffffff;
+      font-size: 9.2pt;
+      text-align: left;
+    }
+
+    .rubric td:first-child {
+      width: 1.65in;
+      font-weight: 700;
+      color: #08396f;
+    }
+
+    .score {
+      display: inline-block;
+      min-width: 0.34in;
+      padding: 0.02in 0.055in;
+      border-radius: 4px;
+      background: #e8f2ff;
+      color: #08396f;
+      font-weight: 800;
+      text-align: center;
+      margin-right: 0.05in;
+    }
+
+    .checklist li {
+      list-style: none;
+      position: relative;
+      padding-left: 0.18in;
+    }
+
+    .checklist li::before {
+      content: "□";
+      position: absolute;
+      left: 0;
+      color: #0f4c8a;
+      font-weight: 700;
+    }
+
+    .page-break {
+      break-before: page;
+    }
+
+    .footer-note {
+      color: #5b6a7f;
+      font-size: 8.8pt;
+      border-top: 1px solid #d7dee8;
+      padding-top: 0.08in;
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div>
+      <div class="kicker">TSA Engineering Design Nationals Prep</div>
+      <h1>AquaScan Critique and Improvement Plan</h1>
+      <p class="subtitle">A hard review of the portfolio, display, presentation, and current 2025/2026 rubric with emphasis on what can still cost national-level points.</p>
+
+      <div class="cover-box">
+        <div>
+          <div class="meta-label">Project</div>
+          <div class="meta-value">AquaScan: Autonomous Research Vessel for Depth-Aware Water-Quality Monitoring</div>
+        </div>
+        <div>
+          <div class="meta-label">Event Theme</div>
+          <div class="meta-value">Engineering the Tools of Scientific Discovery</div>
+        </div>
+        <div>
+          <div class="meta-label">Materials Reviewed</div>
+          <div class="meta-value">Portfolio, trifold photo, presentation PDF, and 2025/2026 Engineering Design rules/rubric</div>
+        </div>
+        <div>
+          <div class="meta-label">Review Date</div>
+          <div class="meta-value">May 3, 2026</div>
+        </div>
+      </div>
+
+      <div class="note">
+        <strong>Honor Statement caution:</strong> the current TSA guide prohibits use of generative AI in submissions. Use this document as critique and planning input only. Do not paste wording from it into the portfolio, display, or script. Rewrite all competition-facing material yourselves and verify with your advisor.
+      </div>
+    </div>
+
+    <p class="footer-note">This document is an advisory review, not an official TSA interpretation. The official guide, competition updates, and event coordinator rulings control.</p>
+  </section>
+
+  <section class="page-break">
+    <h2>Executive Assessment</h2>
+    <p>AquaScan has a real national-level advantage: you built a functioning vessel, probe, Unity interface, and data workflow instead of only proposing a theoretical system. The current weakness is not effort or ambition. The weakness is that the evidence and display do not yet make the project feel inevitable to a judge.</p>
+    <p>The national version should move from “we built a strong prototype” to “we defined measurable requirements, tested against them, found failures, improved the design, and proved the solution is the best fit for this specific monitoring gap.”</p>
+
+    <div class="grid">
+      <div class="card">
+        <strong>Most Valuable Strength</strong>
+        <p>You have physical execution: custom boat, probe, software, and field data. That is harder to fake than a polished theoretical concept.</p>
+      </div>
+      <div class="card">
+        <strong>Most Dangerous Weakness</strong>
+        <p>The project still reads too narratively. Nationals judges need fast evidence: tables, measured results, calibration, comparisons, and clear pass/fail validation.</p>
+      </div>
+      <div class="card">
+        <strong>Best Strategic Move</strong>
+        <p>Make validation the centerpiece. Show measured performance and uncertainty before adding more features.</p>
+      </div>
+      <div class="card">
+        <strong>What Not To Do</strong>
+        <p>Do not add more paragraphs, more feature slides, or more speculative future upgrades until the core proof is stronger.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Current Rubric Implications</h2>
+    <p>The updated 2025/2026 Engineering Design rubric changes the scoring priorities compared with the older rubric. LEAP and patent application concerns from the older guide no longer apply. The current structure is more favorable to AquaScan, but it puts heavy pressure on the display/prototype and iteration evidence.</p>
+
+    <table class="rubric">
+      <thead>
+        <tr>
+          <th>Rubric Area</th>
+          <th>What It Means For AquaScan</th>
+          <th>Highest-Value Improvement</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Tier 1: Display and Prototype/Model, 40 pts</td>
+          <td>This is scored first. If the display and prototype do not immediately communicate the project, the portfolio may never rescue the entry.</td>
+          <td>Rebuild the trifold around a 20-second read: problem, solution, proof, and prototype.</td>
+        </tr>
+        <tr>
+          <td>Tier 2: Documentation Portfolio, 110 pts</td>
+          <td>The portfolio must follow the required order and show engineering design process, selected solution, iteration, communication, work log, and citations.</td>
+          <td>Replace long narrative blocks with decision matrices, requirement tables, engineering drawings, and validation summaries.</td>
+        </tr>
+        <tr>
+          <td>Selected Solution, X2</td>
+          <td>This is a high-weight section. Judges need to see that AquaScan addresses the challenge with accurate engineering representations.</td>
+          <td>Add system architecture, wiring schematic, control flowchart, depth deployment diagram, and data pipeline diagram.</td>
+        </tr>
+        <tr>
+          <td>Iteration Process, X2</td>
+          <td>This is one of your biggest scoring opportunities. The current testing narrative is good but not yet rigorous enough.</td>
+          <td>Use test tables showing objective, method, result, issue, refinement, and retest result.</td>
+        </tr>
+        <tr>
+          <td>Semifinal Presentation, 50 pts</td>
+          <td>Only three members present. The judges score organization, knowledge, articulation, delivery, and equal team participation.</td>
+          <td>Run a tight evidence-first presentation with rehearsed answers to hostile technical questions.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Critical Critiques</h2>
+
+    <div class="section">
+      <h3><span class="priority">1.</span> Compliance Is A Gate, Not A Detail</h3>
+      <p>Verify the display dimensions immediately. The current guide limits the display to 15 inches deep, 2.5 feet wide, and 4 feet high. If the physical trifold is wider than 2.5 feet, this could become a rules violation. The current guide also requires a clearly labeled device or pocket on the front of the display to hold the USB flash drive.</p>
+      <ul>
+        <li>Measure the display with everything set up exactly as judged.</li>
+        <li>Label the USB pocket clearly and make it look intentional.</li>
+        <li>Provide clear one-button or one-switch instructions if judges activate electronics.</li>
+        <li>Confirm all power is dry-cell/photo-voltaic and fits within the display area.</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h3><span class="priority">2.</span> The Display Is Too Text-Heavy</h3>
+      <p>The board currently looks professional, but it reads like printed portfolio pages mounted on a trifold. Nationals judges will not read paragraph-heavy boards deeply during first-pass judging. They need a strong visual argument from several feet away.</p>
+      <ul>
+        <li>Center panel: large AquaScan identity, one-sentence thesis, hero prototype image, and “how it works” diagram.</li>
+        <li>Left panel: problem, monitoring gap, alternatives matrix, and design requirements.</li>
+        <li>Right panel: measured validation results, field data visuals, failures/refinements, and impact.</li>
+        <li>Use fewer panels, larger figures, larger captions, and less explanatory prose.</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h3><span class="priority">3.</span> Real Data Is A Strength, But It Needs Controls</h3>
+      <p>Your pond testing is more credible than purely theoretical submissions, but it is not yet judge-proof. Right now the argument is mostly that readings varied across points and depths. Nationals-level evidence should show accuracy, repeatability, and uncertainty.</p>
+      <ul>
+        <li>Calibrate each sensor and show calibration curves or before/after calibration tables.</li>
+        <li>Compare readings with a handheld meter, chemical test kit, borrowed probe, or known standard where possible.</li>
+        <li>Repeat the same point/depth multiple times and report variation.</li>
+        <li>Show known-depth testing: commanded depth vs actual measured depth.</li>
+        <li>Report GPS waypoint accuracy: target coordinate vs actual stopped coordinate.</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h3><span class="priority">4.</span> The Portfolio Needs More Engineering Artifacts</h3>
+      <p>The selected solution section should look more like an engineering design packet. Photos and CAD renders are useful, but the highest-scoring version should include visual representations that follow engineering conventions.</p>
+      <ul>
+        <li>System block diagram: operator interface, communication, Arduino/ESP32, sensors, motors, battery, winch.</li>
+        <li>Electrical schematic or wiring diagram with power rails, fuses, controllers, ESCs, sensors, and tether.</li>
+        <li>Mechanical drawing with hull dimensions, draft, payload placement, and deployment geometry.</li>
+        <li>Control flowchart for manual control, waypoint navigation, sampling, deployment, and data logging.</li>
+        <li>Data pipeline diagram from sensor reading to CSV to graphs/maps/heat maps.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="page-break">
+    <h2>Evidence Upgrade Plan</h2>
+    <p>The biggest improvement before nationals is a disciplined validation campaign. Keep it realistic: you do not need a perfect commercial instrument. You need to show that you know what the prototype can and cannot prove.</p>
+
+    <table class="rubric">
+      <thead>
+        <tr>
+          <th>Test</th>
+          <th>What To Measure</th>
+          <th>Why Judges Care</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Depth Accuracy</td>
+          <td>Commanded/deployed depth vs actual depth at known marks.</td>
+          <td>Your main claim is depth-aware monitoring. Depth error must be quantified.</td>
+        </tr>
+        <tr>
+          <td>Sensor Calibration</td>
+          <td>Known standards or reference readings for temperature, pH, turbidity, TDS/conductivity, and dissolved oxygen.</td>
+          <td>Variation in readings only matters if the readings are credible.</td>
+        </tr>
+        <tr>
+          <td>Repeatability</td>
+          <td>Three to five repeated readings at the same location and depth.</td>
+          <td>Shows whether the system produces consistent data instead of one-off values.</td>
+        </tr>
+        <tr>
+          <td>Waypoint Accuracy</td>
+          <td>Target GPS point vs actual stop location; distance error.</td>
+          <td>Supports the claim that readings are location-linked and repeatable.</td>
+        </tr>
+        <tr>
+          <td>Deployment Reliability</td>
+          <td>Number of successful lower/hold/retrieve cycles out of total attempts.</td>
+          <td>Turns a live demo into measured engineering reliability.</td>
+        </tr>
+        <tr>
+          <td>Runtime and Power</td>
+          <td>Battery voltage drop, current draw, mission duration, and estimated operational time.</td>
+          <td>Shows practical feasibility and helps answer scale/use questions.</td>
+        </tr>
+        <tr>
+          <td>Leak Testing</td>
+          <td>Duration submerged, inspected components, pass/fail, and any water intrusion.</td>
+          <td>Waterproofing is a core risk for the entire design.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Replace Narrative With This Table Pattern</h3>
+    <table class="rubric">
+      <thead>
+        <tr>
+          <th>Objective</th>
+          <th>Method</th>
+          <th>Measured Result</th>
+          <th>Issue Found</th>
+          <th>Refinement</th>
+          <th>Retest Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Verify probe sealing</td>
+          <td>Submerge probe for fixed duration after sensor installation.</td>
+          <td>Record time, depth, and leak observation.</td>
+          <td>Example: moisture near cap or sensor opening.</td>
+          <td>Change O-ring compression, silicone, cap material, or fasteners.</td>
+          <td>Repeat test and report improved result.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Idea and Positioning Critique</h2>
+    <p>The idea is strongest when positioned as a low-cost, shallow-water, depth-aware monitoring platform. Do not let judges compare you directly against ocean-grade autonomous survey vessels. Define the exact gap you solve.</p>
+
+    <div class="card">
+      <strong>Recommended one-sentence positioning:</strong>
+      <p>AquaScan is a low-cost, semi-autonomous shallow-water research vessel that collects location-tagged and depth-tagged water-quality data using a deployable multi-sensor probe, filling the gap between fixed buoys, manual sampling, drones, and large commercial survey systems.</p>
+    </div>
+
+    <h3>Questions The Portfolio Should Answer Fast</h3>
+    <ul>
+      <li>Who is the user: researchers, restoration groups, marinas, schools, local agencies, or environmental organizations?</li>
+      <li>What exact environment is it for: ponds, marinas, sheltered creeks, shallow lakes, protected nearshore water?</li>
+      <li>What does it replace or improve: manual sampling, fixed stations, surface-only RC/USV sampling, or drone imagery?</li>
+      <li>What is the approximate cost compared with existing commercial monitoring systems?</li>
+      <li>What is the current prototype capable of, and what is future work?</li>
+    </ul>
+
+    <h3>Be Precise About Autonomy</h3>
+    <p>Use “semi-autonomous” carefully. If pond testing was primarily manual with waypoint features tested, say that directly. Overclaiming autonomy gives judges an easy opening. A stronger statement is: manual control has been field-tested, waypoint navigation has been prototyped, and full autonomous route execution is a planned refinement.</p>
+  </section>
+
+  <section class="page-break">
+    <h2>Competitive Positioning</h2>
+    <p>The concern that “water sensing” may feel less exciting than a microscope, a space-cleaning concept, or an unusual agriculture invention is understandable. The fix is not to change the project. The fix is to stop presenting AquaScan as a water-quality boat and start presenting it as a scientific discovery instrument.</p>
+
+    <div class="grid">
+      <div class="card">
+        <strong>Weak framing</strong>
+        <p>We made a boat that collects water-quality data.</p>
+      </div>
+      <div class="card">
+        <strong>Strong framing</strong>
+        <p>AquaScan reveals hidden aquatic conditions by collecting sensor readings linked to both GPS location and depth.</p>
+      </div>
+    </div>
+
+    <h3>Why This Fits The Theme</h3>
+    <p>The annual theme rewards tools that expand what scientists can observe, measure, and interpret. A microscope is compelling because it reveals something invisible. AquaScan should be positioned the same way: surface water can look normal while important conditions exist below. AquaScan turns those hidden conditions into a depth-aware, location-based scientific dataset.</p>
+
+    <div class="card">
+      <strong>Recommended core sentence:</strong>
+      <p>AquaScan turns water from a surface-level observation into a depth-aware, location-based scientific dataset.</p>
+    </div>
+
+    <h3>Your Competitive Advantage</h3>
+    <p>Many theoretical projects may sound bigger or more futuristic. AquaScan’s advantage is that it is an integrated physical tool that was actually built and tested. The strongest national-level stance is not “ours is less theoretical.” It is:</p>
+    <ul>
+      <li>Other teams proposed tools. AquaScan is a working scientific instrument.</li>
+      <li>Other teams may describe possible impact. AquaScan can show a measured workflow from field collection to visualized data.</li>
+      <li>Other teams may present a concept. AquaScan can demonstrate vessel movement, probe deployment, data capture, and interpretation.</li>
+    </ul>
+
+    <h3>Make The Findings More Dramatic</h3>
+    <p>The pond findings are useful, but they can feel underwhelming because natural variation may look like random graph movement. Add one controlled demonstration before nationals where the surface appears normal but the lower water column is intentionally different. Then the scientific result becomes: surface-only monitoring missed the condition, but AquaScan’s depth profile detected it.</p>
+
+    <table class="rubric">
+      <thead>
+        <tr>
+          <th>Controlled Demo</th>
+          <th>What It Proves</th>
+          <th>Why It Helps The Story</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Warm top layer, colder bottom layer</td>
+          <td>Temperature changes with depth.</td>
+          <td>Shows AquaScan can detect vertical stratification instead of only surface conditions.</td>
+        </tr>
+        <tr>
+          <td>Freshwater over denser saltwater layer</td>
+          <td>TDS/conductivity changes below the surface.</td>
+          <td>Creates a clear hidden layer that a surface reading would miss.</td>
+        </tr>
+        <tr>
+          <td>Cloudy/turbid bottom layer</td>
+          <td>Turbidity can vary by depth.</td>
+          <td>Connects directly to runoff, sediment, and water clarity concerns.</td>
+        </tr>
+        <tr>
+          <td>Depth markers in a pool or test tank</td>
+          <td>Commanded probe depth can be compared to actual depth.</td>
+          <td>Strengthens the credibility of all depth-based data.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Display/Presentation Reframe</h3>
+    <p>Add a major visual section titled “What Surface Data Misses.” It should compare surface sampling, fixed buoys, drones, and AquaScan in one fast-read graphic.</p>
+
+    <table class="rubric">
+      <thead>
+        <tr>
+          <th>Method</th>
+          <th>What It Sees</th>
+          <th>What It Misses</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Manual surface sample</td>
+          <td>One point at one depth.</td>
+          <td>Vertical changes and repeated spatial patterns.</td>
+        </tr>
+        <tr>
+          <td>Fixed buoy</td>
+          <td>Continuous data at one location.</td>
+          <td>Fine-scale spatial variation across a water body.</td>
+        </tr>
+        <tr>
+          <td>Drone imaging</td>
+          <td>Large-area surface patterns.</td>
+          <td>Subsurface chemistry and depth profiles.</td>
+        </tr>
+        <tr>
+          <td>AquaScan</td>
+          <td>Location-tagged and depth-tagged sensor data.</td>
+          <td>More complete profiles in shallow, sheltered, and nearshore environments.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p>The final story should be simple: AquaScan is not cool because it is a boat. It is cool because it lets scientists discover hidden water conditions that surface observation can miss.</p>
+  </section>
+
+  <section class="page-break">
+    <h2>Presentation Critique</h2>
+    <p>The current slideshow is strong visually but too much of it is a feature tour. For nationals, the presentation should be built around proof. Judges should hear the main claim, see the prototype, then see measured evidence.</p>
+
+    <table class="rubric">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Focus</th>
+          <th>Goal</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>0:00-1:00</td>
+          <td>Problem and monitoring gap</td>
+          <td>Make the need obvious: water data loses value without location and depth context.</td>
+        </tr>
+        <tr>
+          <td>1:00-2:30</td>
+          <td>AquaScan overview</td>
+          <td>Explain boat, probe, software, and data workflow in one integrated system.</td>
+        </tr>
+        <tr>
+          <td>2:30-5:30</td>
+          <td>Prototype and live demo</td>
+          <td>Show that the system is real, built, and functional.</td>
+        </tr>
+        <tr>
+          <td>5:30-8:00</td>
+          <td>Testing and validation</td>
+          <td>Present measured results, failures, refinements, and retest outcomes.</td>
+        </tr>
+        <tr>
+          <td>8:00-9:15</td>
+          <td>Comparison and impact</td>
+          <td>Show why AquaScan is more appropriate than buoy/drone/manual methods for the defined niche.</td>
+        </tr>
+        <tr>
+          <td>9:15-10:00</td>
+          <td>Limitations and next steps</td>
+          <td>Sound honest, technical, and mature. Do not hide limitations.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Judge Q&A Prep</h3>
+    <ul>
+      <li>Why is AquaScan better than a fixed buoy network?</li>
+      <li>Why is AquaScan better than drone-based water monitoring?</li>
+      <li>How accurate are the sensors?</li>
+      <li>How do you know probe depth?</li>
+      <li>How many samples did you collect, and how repeatable were they?</li>
+      <li>What failed during testing, and what did you change?</li>
+      <li>What is the projected cost of the prototype and a refined version?</li>
+      <li>What would you improve first with another month?</li>
+      <li>What parts were student-built, and what parts were purchased components?</li>
+      <li>What safety risks did you control?</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Portfolio Rewrite Priorities</h2>
+    <p>Do not make the portfolio longer just to look more complete. Make the judge’s scoring job easier. Each section should map visibly to a rubric criterion.</p>
+
+    <div class="grid">
+      <div class="card">
+        <strong>Problem Definition</strong>
+        <p>Start with one concise problem sentence. Then use bullets or a mini-table to define the monitoring gaps: depth, spatial coverage, temporal resolution, interpretation.</p>
+      </div>
+      <div class="card">
+        <strong>Information Gathering</strong>
+        <p>Add specific evidence about current systems and their limitations. Include cost, deployment constraints, or data limitations where possible.</p>
+      </div>
+      <div class="card">
+        <strong>Possible Solutions</strong>
+        <p>Use a weighted decision matrix instead of only prose. Score buoy, drone, standard USV, and AquaScan concept against weighted criteria.</p>
+      </div>
+      <div class="card">
+        <strong>Selected Solution</strong>
+        <p>Lead with diagrams and engineering drawings. Put paragraphs after visuals, not before them.</p>
+      </div>
+      <div class="card">
+        <strong>Iteration Process</strong>
+        <p>Use test/refinement/retest tables. Show failures clearly. Judges reward mature engineering, not pretending everything worked.</p>
+      </div>
+      <div class="card">
+        <strong>Communication of Solution</strong>
+        <p>Make this one page extremely clear: how AquaScan meets the theme, what scientific discovery it enables, and why the data output matters.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="page-break">
+    <h2>Nationals Checklist</h2>
+    <ul class="checklist">
+      <li>Confirm display dimensions are within 15 inches deep, 2.5 feet wide, and 4 feet high.</li>
+      <li>Add clearly labeled USB pocket/device to the front of the display.</li>
+      <li>Rebuild display around problem, solution, proof, and prototype rather than paragraph-heavy panels.</li>
+      <li>Create a one-page requirements table with target, measured result, and pass/fail status.</li>
+      <li>Add a weighted decision matrix for the three possible solutions and selected solution.</li>
+      <li>Add engineering drawings, system diagrams, wiring schematic, and data pipeline visual.</li>
+      <li>Run known-depth probe tests and report depth error.</li>
+      <li>Run sensor calibration/reference comparison tests and report accuracy limits.</li>
+      <li>Run repeated measurements at the same point/depth and report repeatability.</li>
+      <li>Measure GPS waypoint accuracy and stopping error.</li>
+      <li>Measure deployment reliability across repeated lower/retrieve cycles.</li>
+      <li>Measure battery/runtime/current draw under operating conditions.</li>
+      <li>Turn testing narrative into objective-method-result-refinement tables.</li>
+      <li>Shorten feature-tour slides and move validation earlier in the presentation.</li>
+      <li>Prepare equal speaking roles for all three semifinal presenters.</li>
+      <li>Prepare concise answers to likely judge questions.</li>
+      <li>Advisor verifies current official rules, event updates, and Honor Statement compliance.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Bottom Line</h2>
+    <p>AquaScan can be competitive at nationals because it has something many entries will not: a real integrated prototype with field testing. The remaining work is to make the proof undeniable. Prioritize validation, display clarity, and engineering documentation over additional features.</p>
+    <p>The national-level version should make one argument repeatedly: AquaScan solves a specific water-quality monitoring gap by combining mobility, depth-aware sensing, location tagging, and visual data output, and the team proved the core workflow through measured testing and iteration.</p>
+
+    <div class="note">
+      <strong>Final caution:</strong> this critique can guide your work, but competition-facing text, graphics, and scripts must be created by your team in compliance with the TSA Honor Statement.
+    </div>
+  </section>
+</body>
+</html>

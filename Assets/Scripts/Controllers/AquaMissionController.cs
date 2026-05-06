@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
+using AQUAScan.AI;
 using AQUAScan.AquaData;
 using AQUAScan.Config;
 using AQUAScan.Control;
@@ -37,6 +38,9 @@ namespace AQUAScan.Controllers
 
         [Header("Playback")]
         public AquaMissionPlayer Player;
+
+        [Header("AI Inference")]
+        public AquaAiInferenceController AiInference;
 
         [Header("Live Control")]
         public AquaOperationMode DefaultOperationMode = AquaOperationMode.Playback;

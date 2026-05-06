@@ -9,22 +9,27 @@ namespace AQUAScan.Visualization
     public class HeatmapSurface : MonoBehaviour
     {
         [Header("Grid Settings")]
-        public float CellSize = 2f;
+        public float CellSize = 1.25f;
         public float WorldSize = 500f;
-        public float VerticalOffset = 0.05f;
+        public float VerticalOffset = 0.16f;
         [Tooltip("When enabled, the heatmap grid auto-fits to the mission bounds with padding.")]
         public bool AutoFitBounds = true;
 
         [Header("Blending & Smoothing")]
         [Range(1f, 30f)]
-        public float InfluenceRadius = 8f;
+        public float InfluenceRadius = 4.25f;
         [Range(0.01f, 5f)]
         [Tooltip("Higher values make the edges of the trail softer")]
-        public float TrailSoftness = 1.0f;
+        public float TrailSoftness = 0.45f;
+        [Tooltip("Maps colors to the actual min/max collected in the loaded mission instead of broad sensor defaults.")]
+        public bool NormalizeToCollectedRange = true;
+        [Range(0.5f, 3f)]
+        public float DataContrast = 1.35f;
 
         private MeshFilter _meshFilter;
         private MeshRenderer _meshRenderer;
         private MetricDescriptor _metricDescriptor;
+        private Material _runtimeMaterial;
         private bool _isVisible = true;
 
         private AquaMission _lastMission;
@@ -47,6 +52,30 @@ namespace AQUAScan.Visualization
                 _meshFilter = GetComponent<MeshFilter>();
             if (_meshRenderer == null)
                 _meshRenderer = GetComponent<MeshRenderer>();
+            EnsureMaterial();
+        }
+
+        private void EnsureMaterial()
+        {
+            if (_meshRenderer == null || _meshRenderer.sharedMaterial != null)
+                return;
+
+            var shader = Shader.Find("AQUAScan/HeatmapVertexColor") ?? Shader.Find("Sprites/Default");
+            if (shader == null)
+                return;
+
+            _runtimeMaterial = new Material(shader)
+            {
+                name = "AquaScan Runtime Heatmap"
+            };
+            if (_runtimeMaterial.HasProperty("_Color"))
+                _runtimeMaterial.SetColor("_Color", Color.white);
+            if (_runtimeMaterial.HasProperty("_AlphaScale"))
+                _runtimeMaterial.SetFloat("_AlphaScale", 5.5f);
+            if (_runtimeMaterial.HasProperty("_Emission"))
+                _runtimeMaterial.SetFloat("_Emission", 1.15f);
+
+            _meshRenderer.sharedMaterial = _runtimeMaterial;
         }
 
         public void ToggleVisibility(bool visible)
@@ -87,6 +116,11 @@ namespace AQUAScan.Visualization
 
             _metricDescriptor = MetricRegistry.GetOrCreate(metricId);
             var worldToLocal = transform.worldToLocalMatrix;
+            if (!TryComputeMetricRange(mission, metricId, out var valueMin, out var valueMax))
+            {
+                _meshFilter.sharedMesh = null;
+                return;
+            }
 
             // Work in local space so the heatmap follows the GameObject transform (position/rotation).
             List<Vector3> sampleLocalPositions = new List<Vector3>(mission.Samples.Count);
@@ -175,11 +209,11 @@ namespace AQUAScan.Visualization
                     if (vertexWeights[i] > 0.001f)
                     {
                         float avg = vertexValues[i] / vertexWeights[i];
-                        float t = Mathf.InverseLerp(_metricDescriptor.ExpectedRange.x, _metricDescriptor.ExpectedRange.y, avg);
+                        float t = NormalizeMetricValue(avg, valueMin, valueMax);
                         colors[i] = _metricDescriptor.Gradient.Evaluate(t);
 
                         // Use TrailSoftness to divide the weight for a smoother fade.
-                        colors[i].a = Mathf.Clamp01(vertexWeights[i] / TrailSoftness);
+                        colors[i].a = Mathf.Clamp01(vertexWeights[i] / Mathf.Max(0.01f, TrailSoftness));
                     }
                     else
                     {
@@ -197,13 +231,67 @@ namespace AQUAScan.Visualization
             }
 
             Mesh mesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+            mesh.name = $"AquaScan Heatmap {metricId}";
             mesh.vertices = vertices;
             mesh.colors = colors;
             mesh.triangles = triangles.ToArray();
             mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
 
             _meshFilter.sharedMesh = mesh;
+            EnsureMaterial();
             if (_meshRenderer != null) _meshRenderer.enabled = _isVisible;
+        }
+
+        public void ConfigurePresentation(float cellSize, float influenceRadius, float trailSoftness, float verticalOffset)
+        {
+            CellSize = Mathf.Max(0.25f, cellSize);
+            InfluenceRadius = Mathf.Max(CellSize, influenceRadius);
+            TrailSoftness = Mathf.Max(0.01f, trailSoftness);
+            VerticalOffset = verticalOffset;
+
+            if (_lastMission != null && !string.IsNullOrWhiteSpace(_lastMetricId))
+                GenerateInternal(_lastMission, _lastMetricId);
+        }
+
+        private bool TryComputeMetricRange(AquaMission mission, string metricId, out float min, out float max)
+        {
+            min = float.PositiveInfinity;
+            max = float.NegativeInfinity;
+            for (int i = 0; i < mission.Samples.Count; i++)
+            {
+                if (!mission.Samples[i].TryGetMetric(metricId, out var value))
+                    continue;
+
+                min = Mathf.Min(min, value);
+                max = Mathf.Max(max, value);
+            }
+
+            if (float.IsInfinity(min) || float.IsInfinity(max))
+                return false;
+
+            if (!NormalizeToCollectedRange)
+            {
+                min = _metricDescriptor.ExpectedRange.x;
+                max = _metricDescriptor.ExpectedRange.y;
+            }
+
+            if (Mathf.Approximately(min, max))
+            {
+                float padding = Mathf.Max(0.001f, Mathf.Abs(min) * 0.05f);
+                min -= padding;
+                max += padding;
+            }
+
+            return true;
+        }
+
+        private float NormalizeMetricValue(float value, float min, float max)
+        {
+            float t = Mathf.InverseLerp(min, max, value);
+            if (!Mathf.Approximately(DataContrast, 1f))
+                t = Mathf.Clamp01((t - 0.5f) * DataContrast + 0.5f);
+            return t;
         }
 
         private Bounds ComputeBounds(List<Vector3> positions)

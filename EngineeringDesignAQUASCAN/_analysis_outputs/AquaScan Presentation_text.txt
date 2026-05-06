@@ -1,0 +1,92 @@
+
+
+===== PAGE 1 =====
+Autonomous Research Vessel for Depth-Aware Water-Quality Monitoring
+
+
+===== PAGE 2 =====
+The Problem  Water-quality monitoring often lacks the depth and location context needed to represent real conditions  Surface-Only Data   Limited Field Coverage   Difficult Data Interpretation  Misses subsurface changes in oxygen, clarity, temperature, and light  Fixed or manual methods can miss site variation and be difficult in shallow areas  Raw readings are harder to compare without location, depth, or visual context
+
+
+===== PAGE 3 =====
+Why This Maers  Scientists need complete, organized data to understand how water conditions actually change  Environmental Conditions  Better data helps scientists identify changes that cannot be judged from the surface alone  Targeted Restoration  Location- and depth-linked readings help show where follow-up testing or restoration should be focused  Clearer Communication  Maps, graphs, heat maps, and depth profiles make results easier to compare and explain
+
+
+===== PAGE 4 =====
+Engineering The Tools of Scientific Discovery  Measurement   Application   Interpretation
+
+
+===== PAGE 5 =====
+Our Solution: AquaScan  AquaScan is a semi-autonomous catamaran research vessel designed to collect water-quality data across both location and depth
+
+
+===== PAGE 6 =====
+Overview: Probe
+
+
+===== PAGE 7 =====
+Overview: Boat
+
+
+===== PAGE 8 =====
+Overview: Software
+
+
+===== PAGE 9 =====
+Boat Features
+
+
+===== PAGE 10 =====
+Structure and Support
+
+
+===== PAGE 11 =====
+Propulsion & Motor System  Shaft & stuffing tube  Rotating shafts pass through sealed tubes to transfer power to external propellers while preventing water entry.  Internal motor layout  Brushless motors are mounted inside the hull for protection and reliability.  Passive water cooling  Water flows through motor jackets during motion to reduce heat buildup.
+
+
+===== PAGE 12 =====
+Deployment System
+
+
+===== PAGE 13 =====
+Electronics and Power System
+
+
+===== PAGE 14 =====
+Probe Features
+
+
+===== PAGE 15 =====
+Probe Features: Structural  Nose Cone  ●   Hydrodynamic  ●   Transparent  ●   Low drag  Main Body  ●   Protective shell  ●   Structural integrity  Empennage  ●   Passive stabilization  ●   Probe housing  ●   Flow alignment  Component Tray  ●   Electronics mount  ●   Secure + organized  Tether Mount  ●   Reinforced connection  ●   Winch interface
+
+
+===== PAGE 16 =====
+Probe Features: Components  4 1 2 3  1. Dissolved Oxygen ●   Oxygen concentration ●   NaOH-based sensing 2. Turbidity Sensor ●   Water clarity ●   Particle density 3. Temperature Sensor ●   Thermal profile ●   Depth-based readings 4. Dissolved Solids (TDS) ●   Invisible particles ●   Minerals (Ca, Mg, Cl) Ultrasonic Sensor ●   Bottom distance ●   Collision prevention
+
+
+===== PAGE 17 =====
+Software Features
+
+
+===== PAGE 18 =====
+Navigation & Control System
+
+
+===== PAGE 19 =====
+Software Features  Sensor Output CSV File Linearized Graph   Location-Based Heat Map
+
+
+===== PAGE 20 =====
+Initial Testing & Validation  Initial Seal Testing  ●   Staged validation  ●   Incremental integration  ●   Risk reduction Subsystem Testing  ●   Sensors  ●   Motors  ●   Waterproofing  ●   Buoyancy Pool Testing (Controlled)  ●   Flotation  ●   Propulsion  ●   Probe deployment  ●   Live data
+
+
+===== PAGE 21 =====
+Pond Testing  Field Testing (Pond)  ●   Multi-point sampling  ●   Variable depth  ●   Real-world conditions
+
+
+===== PAGE 22 =====
+Pond Test Results  Depth-Based Results   Location-Based Results
+
+
+===== PAGE 23 =====
+Any Question?
