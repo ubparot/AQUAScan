@@ -127,9 +127,9 @@ Material:
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
-    - _HeatmapAlphaMax: 0.18
+    - _HeatmapAlphaMax: 1
     - _HeatmapAlphaMin: 0.02
-    - _HeatmapEmission: 0.08
+    - _HeatmapEmission: 0.5
     - _HeatmapIntensity: 1
     - _HeatmapTintStrength: 0.95
     - _Metallic: 0

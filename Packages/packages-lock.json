@@ -1,5 +1,15 @@
 {
   "dependencies": {
+    "com.besty.unity-skills": {
+      "version": "https://github.com/Besty0728/Unity-Skills.git?path=/SkillsForUnity",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.nuget.newtonsoft-json": "3.0.2",
+        "com.unity.timeline": "1.7.7"
+      },
+      "hash": "cfa14585b621936d5f05eabb1173164fc4c94240"
+    },
     "com.bezi.sidekick": {
       "version": "file:com.bezi.sidekick",
       "depth": 0,
@@ -139,8 +149,8 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.timeline": {
-      "version": "1.7.6",
-      "depth": 0,
+      "version": "1.7.7",
+      "depth": 1,
       "source": "registry",
       "dependencies": {
         "com.unity.modules.audio": "1.0.0",

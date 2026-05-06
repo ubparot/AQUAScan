@@ -149,54 +149,82 @@ namespace AQUAScan.Visualization
             if (_probeGlowMaterial == null)
                 _probeGlowMaterial = BuildUnlitMaterial(new Color(0.1f, 0.85f, 1f, 0.9f));
 
+            var tether = FindUniqueDirectChild("AquaScan Probe Tether");
+            if (tether != null)
+                _tetherLine = tether.GetComponent<LineRenderer>();
+
             if (_tetherLine == null)
             {
-                var tetherGo = new GameObject("AquaScan Probe Tether");
-                tetherGo.transform.SetParent(transform, false);
-                _tetherLine = tetherGo.AddComponent<LineRenderer>();
-                _tetherLine.useWorldSpace = true;
-                _tetherLine.positionCount = 2;
-                _tetherLine.widthCurve = AnimationCurve.Constant(0f, 1f, 0.055f);
-                _tetherLine.numCapVertices = 8;
-                _tetherLine.sharedMaterial = _tetherMaterial;
-                _tetherLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                _tetherLine.receiveShadows = false;
+                if (tether == null)
+                {
+                    tether = new GameObject("AquaScan Probe Tether").transform;
+                    tether.SetParent(transform, false);
+                }
+
+                _tetherLine = tether.GetComponent<LineRenderer>();
+                if (_tetherLine == null)
+                    _tetherLine = tether.gameObject.AddComponent<LineRenderer>();
             }
 
+            _tetherLine.useWorldSpace = true;
+            _tetherLine.positionCount = 2;
+            _tetherLine.widthCurve = AnimationCurve.Constant(0f, 1f, 0.055f);
+            _tetherLine.numCapVertices = 8;
+            _tetherLine.sharedMaterial = _tetherMaterial;
+            _tetherLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _tetherLine.receiveShadows = false;
+
+            _probeBody = FindUniqueDirectChild("AquaScan Depth Probe") ?? _probeBody;
             if (_probeBody == null)
             {
                 var probe = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 probe.name = "AquaScan Depth Probe";
                 probe.transform.SetParent(transform, false);
-                probe.transform.localScale = new Vector3(0.22f, 0.55f, 0.22f);
-                if (probe.TryGetComponent(out Collider collider))
-                    DestroyRuntimeAware(collider);
-                if (probe.TryGetComponent(out MeshRenderer renderer))
-                    renderer.sharedMaterial = _probeMaterial;
                 _probeBody = probe.transform;
             }
 
+            _probeBody.localScale = new Vector3(0.22f, 0.55f, 0.22f);
+            if (_probeBody.TryGetComponent(out Collider collider))
+                DestroyRuntimeAware(collider);
+            if (_probeBody.TryGetComponent(out MeshRenderer renderer))
+                renderer.sharedMaterial = _probeMaterial;
+
+            _probeGlow = FindUniqueDirectChild("AquaScan Probe Sensor Glow") ?? _probeGlow;
             if (_probeGlow == null)
             {
                 var glow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 glow.name = "AquaScan Probe Sensor Glow";
                 glow.transform.SetParent(transform, false);
-                glow.transform.localScale = new Vector3(0.36f, 0.36f, 0.36f);
-                if (glow.TryGetComponent(out Collider collider))
-                    DestroyRuntimeAware(collider);
-                if (glow.TryGetComponent(out MeshRenderer renderer))
-                    renderer.sharedMaterial = _probeGlowMaterial;
                 _probeGlow = glow.transform;
             }
 
+            _probeGlow.localScale = new Vector3(0.36f, 0.36f, 0.36f);
+            if (_probeGlow.TryGetComponent(out Collider glowCollider))
+                DestroyRuntimeAware(glowCollider);
+            if (_probeGlow.TryGetComponent(out MeshRenderer glowRenderer))
+                glowRenderer.sharedMaterial = _probeGlowMaterial;
+
             for (int i = 0; i < _depthRings.Length; i++)
             {
-                if (_depthRings[i] != null)
-                    continue;
+                string ringName = $"AquaScan Depth Ring {i + 1}";
+                var ringTransform = FindUniqueDirectChild(ringName);
+                if (ringTransform != null)
+                    _depthRings[i] = ringTransform.GetComponent<LineRenderer>();
 
-                var ringGo = new GameObject($"AquaScan Depth Ring {i + 1}");
-                ringGo.transform.SetParent(transform, false);
-                var ring = ringGo.AddComponent<LineRenderer>();
+                if (_depthRings[i] == null)
+                {
+                    if (ringTransform == null)
+                    {
+                        ringTransform = new GameObject(ringName).transform;
+                        ringTransform.SetParent(transform, false);
+                    }
+
+                    _depthRings[i] = ringTransform.GetComponent<LineRenderer>();
+                    if (_depthRings[i] == null)
+                        _depthRings[i] = ringTransform.gameObject.AddComponent<LineRenderer>();
+                }
+
+                var ring = _depthRings[i];
                 ring.useWorldSpace = true;
                 ring.loop = true;
                 ring.positionCount = 48;
@@ -205,7 +233,6 @@ namespace AQUAScan.Visualization
                 ring.sharedMaterial = _tetherMaterial;
                 ring.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 ring.receiveShadows = false;
-                _depthRings[i] = ring;
             }
         }
 
@@ -322,6 +349,27 @@ namespace AQUAScan.Visualization
                 Destroy(obj);
             else
                 DestroyImmediate(obj);
+        }
+
+        private Transform FindUniqueDirectChild(string childName)
+        {
+            Transform keep = null;
+            for (int i = transform.childCount - 1; i >= 0; i--)
+            {
+                var child = transform.GetChild(i);
+                if (child.name != childName)
+                    continue;
+
+                if (keep == null)
+                {
+                    keep = child;
+                    continue;
+                }
+
+                DestroyRuntimeAware(child.gameObject);
+            }
+
+            return keep;
         }
     }
 }
