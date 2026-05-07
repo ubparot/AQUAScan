@@ -1,0 +1,10 @@
+{
+  "missionName": "Demo JSON Mission",
+  "samples": [
+    { "timestamp": "2025-01-01T12:00:00Z", "latitude": 37.425100, "longitude": -122.084100, "depth": 2.2, "battery": 96, "metrics": { "temperature": 16.8, "ph": 7.4, "do": 8.9, "salinity": 1.18, "tds": 332, "conductivity": 664, "turbidity": 4.8, "light": 6, "uv": 0.0 } },
+    { "timestamp": "2025-01-01T12:00:10Z", "latitude": 37.425140, "longitude": -122.084000, "depth": 2.7, "battery": 95, "metrics": { "temperature": 17.1, "ph": 7.3, "do": 8.7, "salinity": 1.20, "tds": 340, "conductivity": 680, "turbidity": 5.1, "light": 9, "uv": 0.0 } },
+    { "timestamp": "2025-01-01T12:00:20Z", "latitude": 37.425180, "longitude": -122.083900, "depth": 3.4, "battery": 94, "metrics": { "temperature": 17.7, "ph": 7.2, "do": 8.5, "salinity": 1.24, "tds": 355, "conductivity": 710, "turbidity": 6.0, "light": 420, "uv": 0.9 } },
+    { "timestamp": "2025-01-01T12:00:30Z", "latitude": 37.425230, "longitude": -122.083800, "depth": 4.1, "battery": 93, "metrics": { "temperature": 18.2, "ph": 7.1, "do": 8.3, "salinity": 1.27, "tds": 366, "conductivity": 732, "turbidity": 7.1, "light": 560, "uv": 0.5 } },
+    { "timestamp": "2025-01-01T12:00:40Z", "latitude": 37.425300, "longitude": -122.083700, "depth": 4.0, "battery": 92, "metrics": { "temperature": 18.1, "ph": 7.2, "do": 8.3, "salinity": 1.27, "tds": 367, "conductivity": 734, "turbidity": 7.0, "light": 610, "uv": 0.3 } }
+  ]
+}
