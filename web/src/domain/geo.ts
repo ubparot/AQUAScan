@@ -34,3 +34,14 @@ export function offsetToLocal(reference: GeoReference, latitude: number, longitu
     reference.originAltitude ?? 0,
   )
 }
+
+export function localToGeo(reference: GeoReference, x: number, z: number, altitude?: number) {
+  const originLatRad = degreesToRad(reference.originLatitude)
+  const latitude = reference.originLatitude + (z / earthRadius) * (180 / Math.PI)
+  const longitude = reference.originLongitude + (x / (earthRadius * Math.cos(originLatRad))) * (180 / Math.PI)
+  return {
+    latitude,
+    longitude,
+    altitude: altitude ?? reference.originAltitude,
+  }
+}

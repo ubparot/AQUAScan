@@ -63,7 +63,21 @@ export type DriveStatus = {
   leftMicros: number
   rightMicros: number
   rssi?: number
+  latitude?: number
+  longitude?: number
+  altitude?: number
+  headingDeg?: number
+  speedMps?: number
+  batteryPercent?: number
+  depthMeters?: number
   lastSeenUtc: string
+}
+
+export type TelemetryHealth = 'offline' | 'connecting' | 'fresh' | 'stale' | 'error'
+
+export type TelemetrySnapshot = DriveStatus & {
+  receivedAtMs: number
+  packetAgeMs: number
 }
 
 export type LiveSettings = {
@@ -81,4 +95,4 @@ export type LayerVisibility = {
   heatmap: boolean
 }
 
-export type TabId = 'drive' | 'ai' | 'sensors'
+export type TabId = 'setup' | 'run' | 'drive' | 'ai' | 'sensors' | 'planner' | 'review'

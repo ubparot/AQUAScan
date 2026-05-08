@@ -12,8 +12,8 @@ namespace AQUAScan.Visualization
         [SerializeField] private GameObject aiInferenceTabPanel;
         [SerializeField] private GameObject sensorDataTabPanel;
 
-        private static readonly Color ActiveColor = new Color(0f, 0.52f, 0.62f, 1f);
-        private static readonly Color InactiveColor = new Color(0.024f, 0.034f, 0.038f, 1f);
+        private static readonly Color ActiveColor = new Color(0.02f, 0.54f, 0.68f, 1f);
+        private static readonly Color InactiveColor = new Color(0.055f, 0.066f, 0.07f, 1f);
         private static readonly Color ActiveTextColor = Color.white;
         private static readonly Color InactiveTextColor = new Color(0.64f, 0.7f, 0.67f, 1f);
 
@@ -64,12 +64,12 @@ namespace AQUAScan.Visualization
 
         private void ResolveReferences()
         {
-            drivingTabButton = drivingTabButton != null ? drivingTabButton : transform.Find("DrivingTabButton")?.GetComponent<Button>();
-            aiTabButton = aiTabButton != null ? aiTabButton : transform.Find("AiTabButton")?.GetComponent<Button>();
-            sensorTabButton = sensorTabButton != null ? sensorTabButton : transform.Find("SensorTabButton")?.GetComponent<Button>();
-            drivingTabPanel = drivingTabPanel != null ? drivingTabPanel : transform.Find("DrivingTabPanel")?.gameObject;
-            aiInferenceTabPanel = aiInferenceTabPanel != null ? aiInferenceTabPanel : transform.Find("AiInferenceTabPanel")?.gameObject;
-            sensorDataTabPanel = sensorDataTabPanel != null ? sensorDataTabPanel : transform.Find("SensorDataTabPanel")?.gameObject;
+            drivingTabButton = drivingTabButton != null ? drivingTabButton : FindChildComponent<Button>("DrivingTabButton");
+            aiTabButton = aiTabButton != null ? aiTabButton : FindChildComponent<Button>("AiTabButton");
+            sensorTabButton = sensorTabButton != null ? sensorTabButton : FindChildComponent<Button>("SensorTabButton");
+            drivingTabPanel = drivingTabPanel != null ? drivingTabPanel : FindChild("DrivingTabPanel");
+            aiInferenceTabPanel = aiInferenceTabPanel != null ? aiInferenceTabPanel : FindChild("AiInferenceTabPanel");
+            sensorDataTabPanel = sensorDataTabPanel != null ? sensorDataTabPanel : FindChild("SensorDataTabPanel");
         }
 
         private void WireButtons()
@@ -118,6 +118,24 @@ namespace AQUAScan.Visualization
             var label = button.GetComponentInChildren<Text>(true);
             if (label != null)
                 label.color = active ? ActiveTextColor : InactiveTextColor;
+        }
+
+        private T FindChildComponent<T>(string childName) where T : Component
+        {
+            var child = FindChild(childName);
+            return child != null ? child.GetComponent<T>() : null;
+        }
+
+        private GameObject FindChild(string childName)
+        {
+            var transforms = GetComponentsInChildren<Transform>(true);
+            foreach (var child in transforms)
+            {
+                if (child.name == childName)
+                    return child.gameObject;
+            }
+
+            return null;
         }
     }
 }

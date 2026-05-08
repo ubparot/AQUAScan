@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "runtime": "onnxruntime-web",
+  "packageName": "AQUAScan research models",
+  "packageVersion": "0.0.0-stub",
+  "generatedUtc": "2026-05-07T00:00:00.000Z",
+  "wasmPaths": "/models/research/ort/",
+  "models": {
+    "nighttime_oxygen_trap": {
+      "id": "nighttime_oxygen_trap",
+      "displayName": "Nighttime oxygen-trap mapping",
+      "enabled": false,
+      "url": "/models/research/nighttime-oxygen-trap.onnx",
+      "inputName": "features",
+      "outputName": "probability",
+      "featureOrder": [
+        "hour_sin",
+        "hour_cos",
+        "depth_m",
+        "dissolved_oxygen_mg_l",
+        "temperature_c",
+        "conductivity_us_cm",
+        "turbidity_ntu",
+        "light_lux",
+        "precipitation_mm_h",
+        "do_delta_prev"
+      ],
+      "outputLabels": ["normal", "oxygen_trap"]
+    },
+    "stormwater_fingerprint_atlas": {
+      "id": "stormwater_fingerprint_atlas",
+      "displayName": "Stormwater fingerprint atlas",
+      "enabled": false,
+      "url": "/models/research/stormwater-fingerprint-atlas.onnx",
+      "inputName": "features",
+      "outputName": "scores",
+      "featureOrder": [
+        "conductivity_us_cm",
+        "turbidity_ntu",
+        "temperature_c",
+        "dissolved_oxygen_mg_l",
+        "tds_ppm",
+        "salinity_psu",
+        "uv_index",
+        "light_lux",
+        "temperature_delta_prev",
+        "do_delta_prev"
+      ],
+      "outputLabels": [
+        "road_salt_rich_runoff",
+        "warm_organic_urban_runoff",
+        "groundwater_seepage",
+        "sewage_affected_plume",
+        "sediment_first_flush"
+      ]
+    }
+  }
+}

@@ -13,29 +13,62 @@ type BoatSceneProps = {
   boatPosition: Vec3
   boatHeadingRad?: number
   layers: LayerVisibility
+  selectedSampleIndex?: number
+  onSelectSample?: (index: number) => void
+  editableWaypoints?: boolean
+  onMoveSampleLocal?: (index: number, localX: number, localZ: number) => void
 }
 
-export function BoatScene({ mission, metricId, boatPosition, boatHeadingRad, layers }: BoatSceneProps) {
+export function BoatScene({ mission, metricId, boatPosition, boatHeadingRad, layers, selectedSampleIndex, onSelectSample, editableWaypoints, onMoveSampleLocal }: BoatSceneProps) {
   const bounds = useMemo(() => missionBounds(mission), [mission])
+  const [draggingSampleIndex, setDraggingSampleIndex] = useState<number>()
   return (
     <div className="scene-frame">
       <Canvas camera={{ position: [bounds.center[0] + 18, 22, bounds.center[2] + 26], fov: 48 }} dpr={[1, 1.75]}>
         <color attach="background" args={['#bfeeff']} />
-        <fog attach="fog" args={['#d8f7ff', 90, 220]} />
+        <fog attach="fog" args={['#d8f7ff', 120, 520]} />
         <hemisphereLight args={['#fff8d8', '#80c7d6', 1.4]} />
         <ambientLight intensity={0.55} />
         <directionalLight position={[42, 58, 24]} color="#fff1b8" intensity={2.45} />
         <Suspense fallback={null}>
-          <SceneContent mission={mission} metricId={metricId} boatPosition={boatPosition} boatHeadingRad={boatHeadingRad} layers={layers} />
+          <SceneContent
+            mission={mission}
+            metricId={metricId}
+            boatPosition={boatPosition}
+            boatHeadingRad={boatHeadingRad}
+            layers={layers}
+            selectedSampleIndex={selectedSampleIndex}
+            onSelectSample={onSelectSample}
+            editableWaypoints={editableWaypoints}
+            onMoveSampleLocal={onMoveSampleLocal}
+            draggingSampleIndex={draggingSampleIndex}
+            setDraggingSampleIndex={setDraggingSampleIndex}
+          />
         </Suspense>
-        <OrbitControls target={bounds.center} enableDamping maxPolarAngle={Math.PI * 0.48} minDistance={12} maxDistance={120} />
+        <CameraWaterGuard waterY={-0.18} />
+        <OrbitControls target={bounds.center} enableDamping enabled={draggingSampleIndex === undefined} minPolarAngle={0.12} maxPolarAngle={Math.PI * 0.455} minDistance={12} maxDistance={260} />
       </Canvas>
       {!mission && <div className="scene-empty">Load a mission to draw the track and sensor field.</div>}
     </div>
   )
 }
 
-function SceneContent({ mission, metricId, boatPosition, boatHeadingRad, layers }: BoatSceneProps) {
+function SceneContent({
+  mission,
+  metricId,
+  boatPosition,
+  boatHeadingRad,
+  layers,
+  selectedSampleIndex,
+  onSelectSample,
+  editableWaypoints,
+  onMoveSampleLocal,
+  draggingSampleIndex,
+  setDraggingSampleIndex,
+}: BoatSceneProps & {
+  draggingSampleIndex?: number
+  setDraggingSampleIndex?: (index: number | undefined) => void
+}) {
   const points = useMemo(() => buildScenePoints(mission, metricId), [mission, metricId])
   const linePoints = useMemo(
     () => mission?.samples.map((sample) => new THREE.Vector3(sample.localPosition[0], 0.24, sample.localPosition[2])) ?? [],
@@ -48,11 +81,35 @@ function SceneContent({ mission, metricId, boatPosition, boatHeadingRad, layers 
       <WaterPlane center={bounds.center} radius={bounds.radius} />
       {layers.heatmap && mission && <SmoothHeatmap mission={mission} metricId={metricId} center={bounds.center} radius={bounds.radius} />}
       {layers.track && linePoints.length > 1 && <TrackLine points={linePoints} />}
-      {layers.points && points.map((point) => <SamplePoint key={point.key} point={point} />)}
+      {layers.points &&
+        points.map((point, index) => (
+          <SamplePoint
+            key={point.key}
+            point={point}
+            selected={selectedSampleIndex === index}
+            draggable={Boolean(editableWaypoints)}
+            dragging={draggingSampleIndex === index}
+            onSelect={onSelectSample ? () => onSelectSample(index) : undefined}
+            onMoveLocal={onMoveSampleLocal ? (localX, localZ) => onMoveSampleLocal(index, localX, localZ) : undefined}
+            onDragStart={() => setDraggingSampleIndex?.(index)}
+            onDragEnd={() => setDraggingSampleIndex?.(undefined)}
+          />
+        ))}
       <Boat position={boatPosition} headingRad={boatHeadingRad} />
       {mission && <ProbeMarker position={boatPosition} />}
     </>
   )
+}
+
+function CameraWaterGuard({ waterY }: { waterY: number }) {
+  useFrame(({ camera }) => {
+    const minimumCameraY = waterY + 2.2
+    if (camera.position.y < minimumCameraY) {
+      camera.position.y = minimumCameraY
+      camera.updateProjectionMatrix()
+    }
+  })
+  return null
 }
 
 function Boat({ position, headingRad }: { position: Vec3; headingRad?: number }) {
@@ -117,6 +174,7 @@ function FallbackBoat() {
 
 function WaterPlane({ center, radius }: { center: Vec3; radius: number }) {
   const material = useRef<THREE.ShaderMaterial>(null)
+  const waterSize = Math.max(radius * 14, 900)
   const waterMaps = useMemo(() => createWaterMaps(), [])
   const uniforms = useMemo(
     () => ({
@@ -146,7 +204,7 @@ function WaterPlane({ center, radius }: { center: Vec3; radius: number }) {
 
   return (
     <mesh position={[center[0], -0.18, center[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[radius * 3.5, radius * 3.5, 240, 240]} />
+      <planeGeometry args={[waterSize, waterSize, 300, 300]} />
       <shaderMaterial
         ref={material}
         uniforms={uniforms}
@@ -309,11 +367,68 @@ function TrackLine({ points }: { points: THREE.Vector3[] }) {
   return <primitive object={line} />
 }
 
-function SamplePoint({ point }: { point: { position: Vec3; color: string } }) {
+function SamplePoint({
+  point,
+  selected,
+  draggable,
+  dragging,
+  onSelect,
+  onMoveLocal,
+  onDragStart,
+  onDragEnd,
+}: {
+  point: { position: Vec3; color: string }
+  selected: boolean
+  draggable: boolean
+  dragging: boolean
+  onSelect?: () => void
+  onMoveLocal?: (localX: number, localZ: number) => void
+  onDragStart?: () => void
+  onDragEnd?: () => void
+}) {
+  const dragPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), -point.position[1]), [point.position])
+  const dragPoint = useMemo(() => new THREE.Vector3(), [])
+
   return (
-    <mesh position={point.position}>
-      <sphereGeometry args={[0.28, 16, 12]} />
+    <mesh
+      position={point.position}
+      scale={dragging ? 1.95 : selected ? 1.65 : 1}
+      onClick={(event) => {
+        event.stopPropagation()
+        onSelect?.()
+      }}
+      onPointerDown={(event) => {
+        if (!draggable) return
+        event.stopPropagation()
+        onSelect?.()
+        onDragStart?.()
+        const target = event.target as Element | null
+        target?.setPointerCapture?.(event.pointerId)
+      }}
+      onPointerMove={(event) => {
+        if (!draggable || !dragging || !onMoveLocal) return
+        event.stopPropagation()
+        if (event.ray.intersectPlane(dragPlane, dragPoint)) {
+          onMoveLocal(dragPoint.x, dragPoint.z)
+        }
+      }}
+      onPointerUp={(event) => {
+        if (!draggable) return
+        event.stopPropagation()
+        const target = event.target as Element | null
+        target?.releasePointerCapture?.(event.pointerId)
+        onDragEnd?.()
+      }}
+      onPointerCancel={() => onDragEnd?.()}
+    >
+      <sphereGeometry args={[selected ? 0.34 : 0.28, 16, 12]} />
       <meshStandardMaterial color={point.color} emissive={point.color} emissiveIntensity={0.08} />
+      {(selected || dragging) && (
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[dragging ? 0.62 : 0.48, 0.035, 10, 36]} />
+          <meshBasicMaterial color="#ffffff" transparent opacity={0.86} />
+        </mesh>
+      )}
     </mesh>
   )
 }

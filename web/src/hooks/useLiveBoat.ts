@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { buildDriveCommand, neutralMicros } from '../domain/drive'
-import type { DriveCommand, DriveStatus, LiveSettings } from '../types/aqua'
+import type { AquaMission, AquaSample, DriveCommand, DriveStatus, LiveSettings, TelemetryHealth, TelemetrySnapshot } from '../types/aqua'
 
 type SocketState = 'idle' | 'connecting' | 'connected' | 'error'
 
@@ -14,9 +14,11 @@ const initialStatus: DriveStatus = {
   lastSeenUtc: '',
 }
 
-export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick: [number, number]) {
+export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick: [number, number], simulator?: { enabled: boolean; mission?: AquaMission }) {
   const [socketState, setSocketState] = useState<SocketState>('idle')
   const [status, setStatus] = useState<DriveStatus>(initialStatus)
+  const [packetAgeMs, setPacketAgeMs] = useState<number>()
+  const [history, setHistory] = useState<TelemetrySnapshot[]>([])
   const [armed, setArmed] = useState(false)
   const [estop, setEstop] = useState(false)
   const [lastCommand, setLastCommand] = useState<DriveCommand>(() =>
@@ -25,6 +27,8 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
   const socketRef = useRef<WebSocket | null>(null)
   const seqRef = useRef(0)
   const lastSeenRef = useRef(0)
+  const simProgressRef = useRef(0)
+  const simLastTickRef = useRef(0)
 
   const disconnect = useCallback((reason = 'Disconnected') => {
     const socket = socketRef.current
@@ -33,6 +37,7 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     setSocketState('idle')
     setArmed(false)
     setStatus((previous) => ({ ...previous, connected: false, armed: false, leftMicros: neutralMicros, rightMicros: neutralMicros }))
+    setPacketAgeMs(undefined)
   }, [])
 
   const sendJson = useCallback((payload: unknown) => {
@@ -44,6 +49,22 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
 
   const connect = useCallback(() => {
     if (socketRef.current && socketRef.current.readyState <= WebSocket.OPEN) return
+    if (simulator?.enabled) {
+      const receivedAtMs = Date.now()
+      lastSeenRef.current = receivedAtMs
+      simLastTickRef.current = receivedAtMs
+      setSocketState('connected')
+      setStatus((previous) => ({
+        ...previous,
+        connected: true,
+        armed: false,
+        estop: false,
+        rssi: -42,
+        lastSeenUtc: new Date().toISOString(),
+      }))
+      setPacketAgeMs(0)
+      return
+    }
     setSocketState('connecting')
     const socket = new WebSocket(`ws://${settings.host}:${settings.port}/`)
     socketRef.current = socket
@@ -62,10 +83,25 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
           right?: number
           lastSeq?: number
           rssi?: number
+          lat?: number
+          lng?: number
+          lon?: number
+          latitude?: number
+          longitude?: number
+          altitude?: number
+          heading?: number
+          headingDeg?: number
+          speed?: number
+          speedMps?: number
+          battery?: number
+          batteryPercent?: number
+          depth?: number
+          depthMeters?: number
         }
         if (message.type !== 'status') return
-        lastSeenRef.current = Date.now()
-        setStatus({
+        const receivedAtMs = Date.now()
+        lastSeenRef.current = receivedAtMs
+        const nextStatus = {
           connected: Boolean(message.connected),
           armed: Boolean(message.armed),
           estop: Boolean(message.estop),
@@ -73,8 +109,21 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
           leftMicros: message.left ?? neutralMicros,
           rightMicros: message.right ?? neutralMicros,
           rssi: message.rssi,
+          latitude: firstNumber(message.latitude, message.lat),
+          longitude: firstNumber(message.longitude, message.lon, message.lng),
+          altitude: firstNumber(message.altitude),
+          headingDeg: firstNumber(message.headingDeg, message.heading),
+          speedMps: firstNumber(message.speedMps, message.speed),
+          batteryPercent: firstNumber(message.batteryPercent, message.battery),
+          depthMeters: firstNumber(message.depthMeters, message.depth),
           lastSeenUtc: new Date().toISOString(),
-        })
+        }
+        setStatus(nextStatus)
+        setPacketAgeMs(0)
+        setHistory((previous) => [
+          { ...nextStatus, receivedAtMs, packetAgeMs: 0 },
+          ...previous.slice(0, 59).map((snapshot) => ({ ...snapshot, packetAgeMs: receivedAtMs - snapshot.receivedAtMs })),
+        ])
         setEstop(Boolean(message.estop))
       } catch {
         setSocketState('error')
@@ -88,9 +137,10 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
         setSocketState('idle')
         setArmed(false)
         setStatus((previous) => ({ ...previous, connected: false, armed: false }))
+        setPacketAgeMs(undefined)
       }
     })
-  }, [settings.host, settings.port])
+  }, [settings.host, settings.port, simulator?.enabled])
 
   const toggleArm = useCallback(() => {
     if (!liveMode || socketState !== 'connected' || estop) return
@@ -115,19 +165,26 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
   }, [disconnect, liveMode])
 
   useEffect(() => {
+    if (!liveMode && simulator?.enabled && socketState === 'connected') {
+      const timer = window.setTimeout(() => disconnect('Switched to playback'), 0)
+      return () => window.clearTimeout(timer)
+    }
+  }, [disconnect, liveMode, simulator?.enabled, socketState])
+
+  useEffect(() => {
     if (!liveMode || socketState !== 'connected') return
     const intervalMs = Math.max(20, 1000 / Math.max(1, settings.sendRateHz))
     const timer = window.setInterval(() => {
       const connected = socketRef.current?.readyState === WebSocket.OPEN
-      if (!connected) return
-      if (lastSeenRef.current > 0 && Date.now() - lastSeenRef.current > settings.timeoutSeconds * 1000) {
+      if (!simulator?.enabled && !connected) return
+      if (!simulator?.enabled && lastSeenRef.current > 0 && Date.now() - lastSeenRef.current > settings.timeoutSeconds * 1000) {
         disconnect('Timed out')
         return
       }
       const command = buildDriveCommand(seqRef.current + 1, joystick, settings, armed, estop)
       seqRef.current = command.seq
       setLastCommand(command)
-      sendJson({
+      if (!simulator?.enabled) sendJson({
         type: 'drive',
         seq: command.seq,
         armed: command.armed,
@@ -139,13 +196,76 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
       })
     }, intervalMs)
     return () => window.clearInterval(timer)
-  }, [armed, disconnect, estop, joystick, liveMode, sendJson, settings, socketState])
+  }, [armed, disconnect, estop, joystick, liveMode, sendJson, settings, simulator?.enabled, socketState])
+
+  useEffect(() => {
+    if (!simulator?.enabled || !liveMode || socketState !== 'connected') return
+    const timer = window.setInterval(() => {
+      const now = Date.now()
+      const deltaSeconds = simLastTickRef.current > 0 ? Math.min(1, (now - simLastTickRef.current) / 1000) : 0
+      simLastTickRef.current = now
+      if (armed && !estop) {
+        const throttle = Math.max(0, joystick[1])
+        simProgressRef.current = (simProgressRef.current + deltaSeconds * (0.012 + throttle * 0.06)) % 1
+      }
+      const pose = simulatorPose(simulator.mission, simProgressRef.current)
+      const nextStatus: DriveStatus = {
+        connected: true,
+        armed,
+        estop,
+        lastSeq: seqRef.current,
+        leftMicros: lastCommand.leftMicros,
+        rightMicros: lastCommand.rightMicros,
+        rssi: -42 - Math.round(Math.sin(now / 1700) * 4),
+        latitude: pose.latitude,
+        longitude: pose.longitude,
+        altitude: pose.altitude,
+        headingDeg: pose.headingDeg,
+        speedMps: armed && !estop ? Math.max(0, joystick[1]) * 1.8 : 0,
+        batteryPercent: Math.max(42, 96 - simProgressRef.current * 12),
+        depthMeters: pose.depthMeters,
+        lastSeenUtc: new Date().toISOString(),
+      }
+      lastSeenRef.current = now
+      setStatus(nextStatus)
+      setPacketAgeMs(0)
+      setHistory((previous) => [
+        { ...nextStatus, receivedAtMs: now, packetAgeMs: 0 },
+        ...previous.slice(0, 59).map((snapshot) => ({ ...snapshot, packetAgeMs: now - snapshot.receivedAtMs })),
+      ])
+    }, 250)
+    return () => window.clearInterval(timer)
+  }, [armed, estop, joystick, lastCommand.leftMicros, lastCommand.rightMicros, liveMode, simulator?.enabled, simulator?.mission, socketState])
+
+  useEffect(() => {
+    if (socketState !== 'connected' || lastSeenRef.current <= 0) return
+    const timer = window.setInterval(() => {
+      const age = Date.now() - lastSeenRef.current
+      setPacketAgeMs(age)
+      setHistory((previous) => previous.map((snapshot) => ({ ...snapshot, packetAgeMs: Date.now() - snapshot.receivedAtMs })))
+    }, 250)
+    return () => window.clearInterval(timer)
+  }, [socketState])
 
   useEffect(() => () => disconnect('Page closed'), [disconnect])
+
+  const health: TelemetryHealth =
+    socketState === 'error'
+      ? 'error'
+      : socketState === 'connecting'
+        ? 'connecting'
+        : socketState !== 'connected'
+          ? 'offline'
+          : packetAgeMs !== undefined && packetAgeMs > settings.timeoutSeconds * 1000 * 0.75
+            ? 'stale'
+            : 'fresh'
 
   return {
     socketState,
     status,
+    history,
+    packetAgeMs,
+    health,
     armed,
     estop,
     lastCommand,
@@ -155,4 +275,50 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     triggerEstop,
     resetEstop,
   }
+}
+
+function firstNumber(...values: Array<number | undefined>) {
+  return values.find((value): value is number => typeof value === 'number' && Number.isFinite(value))
+}
+
+function simulatorPose(mission: AquaMission | undefined, progress: number) {
+  const samples = mission?.samples
+  if (!samples || samples.length === 0) {
+    return {
+      latitude: 37.4251,
+      longitude: -122.0841,
+      altitude: 0,
+      headingDeg: 45,
+      depthMeters: 2.5,
+    }
+  }
+  if (samples.length === 1) return poseFromSample(samples[0], samples[0], 0)
+  const scaled = Math.max(0, Math.min(0.999999, progress)) * (samples.length - 1)
+  const index = Math.min(samples.length - 2, Math.floor(scaled))
+  return poseFromSample(samples[index], samples[index + 1], scaled - index)
+}
+
+function poseFromSample(from: AquaSample, to: AquaSample, t: number) {
+  const latitude = lerp(from.latitude, to.latitude, t)
+  const longitude = lerp(from.longitude, to.longitude, t)
+  const dx = to.localPosition[0] - from.localPosition[0]
+  const dz = to.localPosition[2] - from.localPosition[2]
+  const heading = Math.hypot(dx, dz) > 0.001 ? (Math.atan2(dx, dz) * 180) / Math.PI : (from.headingDeg ?? 0)
+  return {
+    latitude,
+    longitude,
+    altitude: lerpOptional(from.altitude, to.altitude, t),
+    headingDeg: heading < 0 ? heading + 360 : heading,
+    depthMeters: lerpOptional(from.depthMeters, to.depthMeters, t),
+  }
+}
+
+function lerpOptional(a: number | undefined, b: number | undefined, t: number) {
+  if (a === undefined) return b
+  if (b === undefined) return a
+  return lerp(a, b, t)
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t
 }

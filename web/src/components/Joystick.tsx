@@ -8,6 +8,7 @@ type JoystickProps = {
 
 export function Joystick({ value, disabled, onChange }: JoystickProps) {
   const ref = useRef<HTMLDivElement | null>(null)
+  const activePointerIdRef = useRef<number | undefined>(undefined)
 
   const updatePointer = useCallback(
     (clientX: number, clientY: number) => {
@@ -25,19 +26,39 @@ export function Joystick({ value, disabled, onChange }: JoystickProps) {
     <div
       className="joystick"
       data-disabled={disabled}
+      draggable={false}
       ref={ref}
       onPointerDown={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        if (disabled) return
+        activePointerIdRef.current = event.pointerId
         event.currentTarget.setPointerCapture(event.pointerId)
         updatePointer(event.clientX, event.clientY)
       }}
       onPointerMove={(event) => {
-        if (event.buttons === 1) updatePointer(event.clientX, event.clientY)
+        event.preventDefault()
+        if (activePointerIdRef.current === event.pointerId && event.buttons === 1) updatePointer(event.clientX, event.clientY)
       }}
       onPointerUp={(event) => {
-        event.currentTarget.releasePointerCapture(event.pointerId)
+        event.preventDefault()
+        if (activePointerIdRef.current !== event.pointerId) return
+        activePointerIdRef.current = undefined
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
         onChange([0, 0])
       }}
-      onPointerCancel={() => onChange([0, 0])}
+      onPointerCancel={(event) => {
+        if (activePointerIdRef.current !== event.pointerId) return
+        activePointerIdRef.current = undefined
+        onChange([0, 0])
+      }}
+      onLostPointerCapture={(event) => {
+        if (activePointerIdRef.current !== event.pointerId) return
+        activePointerIdRef.current = undefined
+        onChange([0, 0])
+      }}
+      onDragStart={(event) => event.preventDefault()}
+      onContextMenu={(event) => event.preventDefault()}
     >
       <div className="joystick-cross joystick-cross-x" />
       <div className="joystick-cross joystick-cross-y" />

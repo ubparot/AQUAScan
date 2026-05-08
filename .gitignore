@@ -73,3 +73,8 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# Node dependency installs are generated and can contain symlinks that Git cannot
+# safely process on Windows.
+/Tools/node_modules/
+/Tools/artifact-build/node_modules/

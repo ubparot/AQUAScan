@@ -709,6 +709,7 @@ namespace AQUAScan.Controllers
             if (LegendGradient != null)
             {
                 _legendTexture = BuildGradientTexture(descriptor.Gradient);
+                LegendGradient.color = Color.white;
                 LegendGradient.texture = _legendTexture;
             }
         }
