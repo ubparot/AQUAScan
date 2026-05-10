@@ -115,11 +115,11 @@ Arduino Mega:
 - left ESC signal pin: `9`
 - right ESC signal pin: `10`
 - USB debug stays on `Serial` at `115200`
-- ESP32 bridge uses `Serial1` at `19200`
-- Mega `RX1` = pin `19`
-- Mega `TX1` = pin `18`
-- wire ESP32 `TX` -> Mega `RX1` (`19`)
-- wire ESP32 `RX` -> Mega `TX1` (`18`)
+- ESP32 bridge uses `Serial2` at `19200`
+- Mega `RX2` = pin `17`
+- Mega `TX2` = pin `16`
+- wire ESP32 `TX2` / GPIO `17` -> Mega `RX2` (`17`)
+- wire ESP32 `RX2` / GPIO `16` <- Mega `TX2` (`16`)
 
 Common requirements:
 - shared ground between ESP32, Arduino, and ESC signal ground
@@ -170,7 +170,7 @@ After boot:
 - In router mode, Unity should no longer use the hardcoded `192.168.4.1` unless the ESP32 actually fell back to AP mode.
 
 ### Arduino Mega Notes
-- The Mega bridge now uses `Serial1` for ESP32 comms and keeps USB `Serial` free for the serial monitor.
+- The Mega bridge now uses `Serial2` for ESP32 comms and keeps USB `Serial` free for the serial monitor.
 - Open the Arduino serial monitor at `115200` if you want to see applied drive/status debug without interfering with the ESP32 link.
 
 ### Playback / Data Visualization
