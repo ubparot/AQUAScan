@@ -112,6 +112,7 @@ function App() {
   const [simulatorEnabled, setSimulatorEnabled] = useLocalStorageState('aquascan.simulatorEnabled', false)
   const [interfaceMode, setInterfaceMode] = useLocalStorageState<'simple' | 'advanced'>('aquascan.interfaceMode', 'simple')
   const [joystick, setJoystick] = useState<[number, number]>([0, 0])
+  const [probeSpeed, setProbeSpeed] = useState(160)
   const [selectedSampleIndex, setSelectedSampleIndex] = useState<number>()
   const [timelineCollapsed, setTimelineCollapsed] = useState(false)
   const [theme, setTheme] = useLocalStorageState<'light' | 'dark'>('aquascan.theme', 'light')
@@ -128,6 +129,7 @@ function App() {
   const infoPanelRef = useRef<HTMLElement>(null)
   const controlHandleRef = useRef<HTMLButtonElement>(null)
   const infoHandleRef = useRef<HTMLButtonElement>(null)
+  const probeHoldTimerRef = useRef<number | undefined>(undefined)
   const live = useLiveBoat(settings, liveMode, joystick, { enabled: simulatorEnabled, mission })
 
   const segment = useMemo(() => getPlaybackSegment(mission, normalizedTime), [mission, normalizedTime])
@@ -322,6 +324,28 @@ function App() {
     const nearest = nearestSampleIndex(mission, normalizedTime)
     if (nearest !== undefined) selectSample(nearest)
   }
+
+  const sendProbeMotion = (direction: 'raise' | 'lower' | 'stop') => {
+    live.sendProbeCommand(direction, direction === 'stop' ? 0 : probeSpeed)
+  }
+
+  const stopProbeMotion = () => {
+    if (probeHoldTimerRef.current !== undefined) {
+      window.clearInterval(probeHoldTimerRef.current)
+      probeHoldTimerRef.current = undefined
+    }
+    sendProbeMotion('stop')
+  }
+
+  const startProbeMotion = (direction: 'raise' | 'lower') => {
+    stopProbeMotion()
+    sendProbeMotion(direction)
+    probeHoldTimerRef.current = window.setInterval(() => sendProbeMotion(direction), 250)
+  }
+
+  useEffect(() => () => {
+    if (probeHoldTimerRef.current !== undefined) window.clearInterval(probeHoldTimerRef.current)
+  }, [])
 
   const exportMissionRoute = () => {
     if (!mission) return
@@ -1164,6 +1188,55 @@ function App() {
                 <Readout label="Live heading" value={live.status.headingDeg !== undefined ? `${live.status.headingDeg.toFixed(0)} deg` : '--'} />
                 <Readout label="Control source" value={simulatorEnabled ? 'Simulator' : 'Boat'} />
               </div>
+
+              <article className="run-panel">
+                <div className="mission-tools-header">
+                  <div>
+                    <p className="eyebrow">Probe winch</p>
+                    <h3>Manual depth adjustment</h3>
+                  </div>
+                  <span className="muted">Arduino pins 7 / 6</span>
+                </div>
+                <label className="field-stack">
+                  <span>Winch speed</span>
+                  <input type="range" min={60} max={255} step={5} value={probeSpeed} onChange={(event) => setProbeSpeed(Number(event.target.value))} />
+                </label>
+                <div className="button-row">
+                  <button
+                    className="secondary-button"
+                    disabled={!liveMode || live.socketState !== 'connected' || live.estop}
+                    onPointerDown={() => startProbeMotion('lower')}
+                    onPointerUp={stopProbeMotion}
+                    onPointerCancel={stopProbeMotion}
+                    onPointerLeave={stopProbeMotion}
+                    onBlur={stopProbeMotion}
+                  >
+                    <ArrowDown size={16} />
+                    Lower
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={!liveMode || live.socketState !== 'connected' || live.estop}
+                    onPointerDown={() => startProbeMotion('raise')}
+                    onPointerUp={stopProbeMotion}
+                    onPointerCancel={stopProbeMotion}
+                    onPointerLeave={stopProbeMotion}
+                    onBlur={stopProbeMotion}
+                  >
+                    <ArrowUp size={16} />
+                    Raise
+                  </button>
+                  <button className="danger-button" disabled={!liveMode || live.socketState !== 'connected'} onClick={stopProbeMotion}>
+                    Stop
+                  </button>
+                </div>
+                <div className="telemetry-grid">
+                  <Readout label="Winch speed" value={`${probeSpeed}/255`} />
+                  <Readout label="Winch state" value={live.status.probeDirection ?? 'stop'} />
+                  <Readout label="Applied speed" value={live.status.probeSpeed !== undefined ? `${live.status.probeSpeed}/255` : '--'} />
+                  <Readout label="Depth" value={live.status.depthMeters !== undefined ? `${live.status.depthMeters.toFixed(2)} m` : '--'} />
+                </div>
+              </article>
               <TelemetryHistory history={live.history} />
             </section>
           )}

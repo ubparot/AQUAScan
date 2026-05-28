@@ -19,15 +19,15 @@ namespace
 {
   const int kTempPin = 4;
 
-  const int kLightDigitalPin = 27;
-  const int kLightAnalogPin = 34;
+  const int kTurbidityAnalogPin = 35;
+  const int kPhAnalogPin = 34;
+  const int kDissolvedOxygenAnalogPin = 32;
+  const int kTdsAnalogPin = 33;
+  const int kUvAnalogPin = 36;      // ESP32 SVP/SUP/VP input-only analog pin
+  const int kLightAnalogPin = 39;   // ESP32 SVN/VN input-only analog pin
 
-  const int kTdsAnalogPin = 35;
-  const int kTurbidityAnalogPin = 32;
-  const int kUvAnalogPin = 33;
-
-  const int kUltrasonicTrigPin = 26;
-  const int kUltrasonicEchoPin = 25;
+  const int kUltrasonicTrigPin = 25;
+  const int kUltrasonicEchoPin = 27;
 
   const int kRs485TxPin = 17;
   const int kRs485RxPin = 16;
@@ -109,11 +109,13 @@ void printCsvHeader()
   Serial.println(
     "seq,"
     "temp_c,temp_raw_gpio,"
-    "light_do,light_ao_raw,light_ao_v,"
-    "tds_raw,tds_v,"
     "turbidity_raw,turbidity_v,"
+    "ph_raw,ph_v,"
+    "distance_cm,"
+    "do_raw,do_v,"
+    "tds_raw,tds_v,"
     "uv_raw,uv_v,"
-    "distance_cm");
+    "light_raw,light_v");
 }
 
 void printValueOrNaN(float value, int decimals)
@@ -129,11 +131,12 @@ void sampleAndPrint()
   float temperatureC = readTemperatureC();
   int tempRawGpio = digitalRead(kTempPin);
 
-  int lightDigital = digitalRead(kLightDigitalPin);
-  int lightAnalogRaw = analogRead(kLightAnalogPin);
-  int tdsRaw = analogRead(kTdsAnalogPin);
   int turbidityRaw = analogRead(kTurbidityAnalogPin);
+  int phRaw = analogRead(kPhAnalogPin);
+  int dissolvedOxygenRaw = analogRead(kDissolvedOxygenAnalogPin);
+  int tdsRaw = analogRead(kTdsAnalogPin);
   int uvRaw = analogRead(kUvAnalogPin);
+  int lightAnalogRaw = analogRead(kLightAnalogPin);
 
   float distanceCm = readUltrasonicDistanceCm();
 
@@ -143,25 +146,31 @@ void sampleAndPrint()
   Serial.print(",");
   Serial.print(tempRawGpio);
   Serial.print(",");
-  Serial.print(lightDigital);
+  Serial.print(turbidityRaw);
   Serial.print(",");
-  Serial.print(lightAnalogRaw);
+  Serial.print(adcToVoltage(turbidityRaw), 3);
   Serial.print(",");
-  Serial.print(adcToVoltage(lightAnalogRaw), 3);
+  Serial.print(phRaw);
+  Serial.print(",");
+  Serial.print(adcToVoltage(phRaw), 3);
+  Serial.print(",");
+  printValueOrNaN(distanceCm, 1);
+  Serial.print(",");
+  Serial.print(dissolvedOxygenRaw);
+  Serial.print(",");
+  Serial.print(adcToVoltage(dissolvedOxygenRaw), 3);
   Serial.print(",");
   Serial.print(tdsRaw);
   Serial.print(",");
   Serial.print(adcToVoltage(tdsRaw), 3);
   Serial.print(",");
-  Serial.print(turbidityRaw);
-  Serial.print(",");
-  Serial.print(adcToVoltage(turbidityRaw), 3);
-  Serial.print(",");
   Serial.print(uvRaw);
   Serial.print(",");
   Serial.print(adcToVoltage(uvRaw), 3);
   Serial.print(",");
-  printValueOrNaN(distanceCm, 1);
+  Serial.print(lightAnalogRaw);
+  Serial.print(",");
+  Serial.print(adcToVoltage(lightAnalogRaw), 3);
   Serial.println();
 
   drainRs485ToSerial();
@@ -173,17 +182,18 @@ void setup()
   delay(500);
 
   pinMode(kTempPin, INPUT);
-  pinMode(kLightDigitalPin, INPUT);
   pinMode(kUltrasonicTrigPin, OUTPUT);
   pinMode(kUltrasonicEchoPin, INPUT);
   pinMode(kRs485ControlPin, OUTPUT);
   setRs485ReceiveMode();
 
   analogReadResolution(12);
-  analogSetPinAttenuation(kLightAnalogPin, ADC_11db);
-  analogSetPinAttenuation(kTdsAnalogPin, ADC_11db);
   analogSetPinAttenuation(kTurbidityAnalogPin, ADC_11db);
+  analogSetPinAttenuation(kPhAnalogPin, ADC_11db);
+  analogSetPinAttenuation(kDissolvedOxygenAnalogPin, ADC_11db);
+  analogSetPinAttenuation(kTdsAnalogPin, ADC_11db);
   analogSetPinAttenuation(kUvAnalogPin, ADC_11db);
+  analogSetPinAttenuation(kLightAnalogPin, ADC_11db);
 
 #if AQUASCAN_HAS_DS18B20
   tempSensor.begin();

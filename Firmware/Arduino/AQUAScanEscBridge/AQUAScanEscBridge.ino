@@ -7,9 +7,11 @@
 
   ESP32 -> Arduino:
     D,<seq>,<armed>,<estop>,<leftMicros>,<rightMicros>
+    W,<seq>,<direction>,<speed>
 
   Arduino -> ESP32:
     S,<seq>,<armed>,<estop>,<leftMicros>,<rightMicros>
+    P,<seq>,<direction>,<speed>
 */
 
 #include <Servo.h>
@@ -18,6 +20,8 @@ namespace
 {
   const uint8_t kLeftEscPin = 9;
   const uint8_t kRightEscPin = 10;
+  const uint8_t kWinchLowerPin = 7;
+  const uint8_t kWinchRaisePin = 6;
 
   const unsigned long kBridgeBaudRate = 19200;
   const unsigned long kDebugBaudRate = 115200;
@@ -42,16 +46,26 @@ bool estop = false;
 int lastSeq = 0;
 int leftMicros = kNeutralMicros;
 int rightMicros = kNeutralMicros;
+int winchDirection = 0;
+int winchSpeed = 0;
 unsigned long lastCommandAt = 0;
+unsigned long lastWinchCommandAt = 0;
 unsigned long lastStatusAt = 0;
 
 void applyOutputs(int left, int right);
 void readBridgeCommands();
 void handleCommand(const char* line);
+void handleDriveCommand(const char* line);
+void handleWinchCommand(const char* line);
 void neutralize(const char* reason, bool clearEstop);
+void stopWinch(const char* reason);
 void sendStatus();
+void sendWinchStatus();
 bool parseDriveCommand(const char* line, int* values, int expectedCount);
+bool parseWinchCommand(const char* line, int* values, int expectedCount);
 int clampPulse(int value);
+int clampWinchSpeed(int value);
+void applyWinch(int direction, int speed);
 void printLineHex(const char* line);
 
 void setup()
@@ -61,8 +75,11 @@ void setup()
 
   leftEsc.attach(kLeftEscPin);
   rightEsc.attach(kRightEscPin);
+  pinMode(kWinchLowerPin, OUTPUT);
+  pinMode(kWinchRaisePin, OUTPUT);
 
   applyOutputs(kNeutralMicros, kNeutralMicros);
+  applyWinch(0, 0);
   Serial.println(F("AQUAScan ESC bridge booting. Holding neutral for ESC arming."));
   delay(kStartupNeutralDelayMs);
 
@@ -79,8 +96,14 @@ void loop()
   if (lastCommandAt > 0 && now - lastCommandAt > kCommandTimeoutMs)
     neutralize("command timeout", false);
 
+  if (lastWinchCommandAt > 0 && now - lastWinchCommandAt > kCommandTimeoutMs)
+    stopWinch("winch timeout");
+
   if (now - lastStatusAt >= kStatusIntervalMs)
+  {
     sendStatus();
+    sendWinchStatus();
+  }
 }
 
 void readBridgeCommands()
@@ -117,13 +140,28 @@ void readBridgeCommands()
 
 void handleCommand(const char* line)
 {
+  if (line[0] == 'D')
+  {
+    handleDriveCommand(line);
+    return;
+  }
+
+  if (line[0] == 'W')
+  {
+    handleWinchCommand(line);
+    return;
+  }
+
   if (line[0] != 'D')
   {
     Serial.print(F("Ignored bridge noise: "));
     printLineHex(line);
     return;
   }
+}
 
+void handleDriveCommand(const char* line)
+{
   int values[5] = { lastSeq, 0, 0, kNeutralMicros, kNeutralMicros };
   if (!parseDriveCommand(line, values, 5))
   {
@@ -161,6 +199,33 @@ void handleCommand(const char* line)
   Serial.println(rightMicros);
 }
 
+void handleWinchCommand(const char* line)
+{
+  int values[3] = { lastSeq, 0, 0 };
+  if (!parseWinchCommand(line, values, 3))
+  {
+    Serial.print(F("Bad winch line: "));
+    printLineHex(line);
+    stopWinch("bad winch command");
+    return;
+  }
+
+  lastSeq = values[0];
+  winchDirection = constrain(values[1], -1, 1);
+  winchSpeed = winchDirection == 0 ? 0 : clampWinchSpeed(values[2]);
+  lastWinchCommandAt = millis();
+
+  applyWinch(winchDirection, winchSpeed);
+  sendWinchStatus();
+
+  Serial.print(F("Winch seq="));
+  Serial.print(lastSeq);
+  Serial.print(F(" direction="));
+  Serial.print(winchDirection);
+  Serial.print(F(" speed="));
+  Serial.println(winchSpeed);
+}
+
 void applyOutputs(int left, int right)
 {
   leftEsc.writeMicroseconds(clampPulse(left));
@@ -178,9 +243,23 @@ void neutralize(const char* reason, bool clearEstop)
   lastCommandAt = 0;
 
   applyOutputs(leftMicros, rightMicros);
+  applyWinch(0, 0);
   sendStatus();
+  sendWinchStatus();
 
   Serial.print(F("Neutralized: "));
+  Serial.println(reason);
+}
+
+void stopWinch(const char* reason)
+{
+  winchDirection = 0;
+  winchSpeed = 0;
+  lastWinchCommandAt = 0;
+  applyWinch(winchDirection, winchSpeed);
+  sendWinchStatus();
+
+  Serial.print(F("Winch stopped: "));
   Serial.println(reason);
 }
 
@@ -200,9 +279,48 @@ void sendStatus()
   Serial2.println(rightMicros);
 }
 
+void sendWinchStatus()
+{
+  Serial2.print(F("P,"));
+  Serial2.print(lastSeq);
+  Serial2.print(',');
+  Serial2.print(winchDirection);
+  Serial2.print(',');
+  Serial2.println(winchSpeed);
+}
+
 bool parseDriveCommand(const char* line, int* values, int expectedCount)
 {
   if (line[0] != 'D' || line[1] != ',')
+    return false;
+
+  const char* cursor = line + 2;
+
+  for (int i = 0; i < expectedCount; i++)
+  {
+    char* endPointer = nullptr;
+    const long parsed = strtol(cursor, &endPointer, 10);
+
+    if (endPointer == cursor)
+      return false;
+
+    values[i] = static_cast<int>(parsed);
+
+    if (i == expectedCount - 1)
+      return *endPointer == '\0';
+
+    if (*endPointer != ',')
+      return false;
+
+    cursor = endPointer + 1;
+  }
+
+  return true;
+}
+
+bool parseWinchCommand(const char* line, int* values, int expectedCount)
+{
+  if (line[0] != 'W' || line[1] != ',')
     return false;
 
   const char* cursor = line + 2;
@@ -236,6 +354,37 @@ int clampPulse(int value)
   if (value > kMaxMicros)
     return kMaxMicros;
   return value;
+}
+
+int clampWinchSpeed(int value)
+{
+  if (value < 0)
+    return 0;
+  if (value > 255)
+    return 255;
+  return value;
+}
+
+void applyWinch(int direction, int speed)
+{
+  const int clampedSpeed = clampWinchSpeed(speed);
+
+  if (direction > 0)
+  {
+    analogWrite(kWinchLowerPin, clampedSpeed);
+    analogWrite(kWinchRaisePin, 0);
+    return;
+  }
+
+  if (direction < 0)
+  {
+    analogWrite(kWinchLowerPin, 0);
+    analogWrite(kWinchRaisePin, clampedSpeed);
+    return;
+  }
+
+  analogWrite(kWinchLowerPin, 0);
+  analogWrite(kWinchRaisePin, 0);
 }
 
 void printLineHex(const char* line)

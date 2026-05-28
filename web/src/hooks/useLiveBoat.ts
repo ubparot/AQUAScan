@@ -97,6 +97,8 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
           batteryPercent?: number
           depth?: number
           depthMeters?: number
+          probeDirection?: 'raise' | 'lower' | 'stop'
+          probeSpeed?: number
         }
         if (message.type !== 'status') return
         const receivedAtMs = Date.now()
@@ -108,6 +110,8 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
           lastSeq: message.lastSeq ?? 0,
           leftMicros: message.left ?? neutralMicros,
           rightMicros: message.right ?? neutralMicros,
+          probeDirection: message.probeDirection,
+          probeSpeed: message.probeSpeed,
           rssi: message.rssi,
           latitude: firstNumber(message.latitude, message.lat),
           longitude: firstNumber(message.longitude, message.lon, message.lng),
@@ -159,6 +163,27 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     setEstop(false)
     setArmed(false)
   }, [])
+
+  const sendProbeCommand = useCallback((direction: 'raise' | 'lower' | 'stop', speed: number) => {
+    if (!liveMode || socketState !== 'connected' || estop) return false
+    const nextSeq = seqRef.current + 1
+    seqRef.current = nextSeq
+    const clampedSpeed = Math.max(0, Math.min(255, Math.round(speed)))
+    if (simulator?.enabled) {
+      setStatus((previous) => ({
+        ...previous,
+        probeDirection: direction,
+        probeSpeed: direction === 'stop' ? 0 : clampedSpeed,
+      }))
+      return true
+    }
+    return sendJson({
+      type: 'probe_control',
+      seq: nextSeq,
+      direction,
+      speed: direction === 'stop' ? 0 : clampedSpeed,
+    })
+  }, [estop, liveMode, sendJson, simulator?.enabled, socketState])
 
   useEffect(() => {
     if (!liveMode && socketRef.current) disconnect('Switched to playback')
@@ -224,6 +249,8 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
         speedMps: armed && !estop ? Math.max(0, joystick[1]) * 1.8 : 0,
         batteryPercent: Math.max(42, 96 - simProgressRef.current * 12),
         depthMeters: pose.depthMeters,
+        probeDirection: status.probeDirection,
+        probeSpeed: status.probeSpeed,
         lastSeenUtc: new Date().toISOString(),
       }
       lastSeenRef.current = now
@@ -235,7 +262,7 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
       ])
     }, 250)
     return () => window.clearInterval(timer)
-  }, [armed, estop, joystick, lastCommand.leftMicros, lastCommand.rightMicros, liveMode, simulator?.enabled, simulator?.mission, socketState])
+  }, [armed, estop, joystick, lastCommand.leftMicros, lastCommand.rightMicros, liveMode, simulator?.enabled, simulator?.mission, socketState, status.probeDirection, status.probeSpeed])
 
   useEffect(() => {
     if (socketState !== 'connected' || lastSeenRef.current <= 0) return
@@ -274,6 +301,7 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     toggleArm,
     triggerEstop,
     resetEstop,
+    sendProbeCommand,
   }
 }
 

@@ -116,8 +116,14 @@ bool bridgeEstop = false;
 int bridgeLastSeq = 0;
 int bridgeLeftMicros = kNeutralMicros;
 int bridgeRightMicros = kNeutralMicros;
+int probeDirection = 0;
+int probeSpeed = 0;
+int bridgeProbeDirection = 0;
+int bridgeProbeSpeed = 0;
 unsigned long lastCommandAt = 0;
 unsigned long lastBridgeCommandAt = 0;
+unsigned long lastProbeCommandAt = 0;
+unsigned long lastProbeBridgeCommandAt = 0;
 unsigned long lastStatusBroadcastAt = 0;
 unsigned long lastBatterySampleAt = 0;
 
@@ -145,6 +151,7 @@ void handleSocketEvent(uint8_t clientNum, WStype_t type, uint8_t* payload, size_
 void handleTextMessage(uint8_t clientNum, const char* payload, size_t length);
 void handleDriveMessage(uint8_t clientNum, const String& message);
 void handleEstopMessage(uint8_t clientNum, const String& message);
+void handleProbeControlMessage(uint8_t clientNum, const String& message);
 void handleMissionUploadMessage(uint8_t clientNum, const String& type, const String& message);
 void readUsbSerialCommands();
 void handleUsbSerialCommand(String command);
@@ -155,7 +162,10 @@ void applyEscOutputs(int left, int right);
 void writeEscPulse(int pin, int channel, int micros);
 void readBridgeStatus();
 void applyBridgeStatus(const char* line);
+void applyBridgeProbeStatus(const char* line);
 void sendBridgeCommand();
+void sendBridgeProbeCommand();
+void stopProbe(const char* reason);
 void neutralize(const char* reason);
 void updateTelemetry();
 void updateGps();
@@ -251,8 +261,14 @@ void loop()
   if (kUseArduinoBridge && hasSocketClient() && lastCommandAt > 0 && now - lastBridgeCommandAt >= kBridgeKeepaliveIntervalMs)
     sendBridgeCommand();
 
+  if (kUseArduinoBridge && probeDirection != 0 && now - lastProbeBridgeCommandAt >= kBridgeKeepaliveIntervalMs)
+    sendBridgeProbeCommand();
+
   if (lastCommandAt > 0 && now - lastCommandAt > kCommandTimeoutMs)
     neutralize("command timeout");
+
+  if (lastProbeCommandAt > 0 && now - lastProbeCommandAt > kCommandTimeoutMs)
+    stopProbe("probe command timeout");
 }
 
 void handleSocketEvent(uint8_t clientNum, WStype_t type, uint8_t* payload, size_t length)
@@ -303,6 +319,12 @@ void handleTextMessage(uint8_t clientNum, const char* payload, size_t length)
   if (type == "estop")
   {
     handleEstopMessage(clientNum, message);
+    return;
+  }
+
+  if (type == "probe_control")
+  {
+    handleProbeControlMessage(clientNum, message);
     return;
   }
 
@@ -359,6 +381,40 @@ void handleEstopMessage(uint8_t clientNum, const String& message)
   sendBridgeCommand();
   sendStatus(clientNum);
   Serial.printf("E-stop latched seq=%d\n", lastSeq);
+}
+
+void handleProbeControlMessage(uint8_t clientNum, const String& message)
+{
+  lastSeq = readJsonInt(message, "seq", lastSeq);
+  const String direction = readJsonString(message, "direction", "stop");
+  const int speed = constrain(readJsonInt(message, "speed", 0), 0, 255);
+
+  if (estop)
+  {
+    probeDirection = 0;
+    probeSpeed = 0;
+  }
+  else if (direction == "lower")
+  {
+    probeDirection = 1;
+    probeSpeed = speed;
+  }
+  else if (direction == "raise")
+  {
+    probeDirection = -1;
+    probeSpeed = speed;
+  }
+  else
+  {
+    probeDirection = 0;
+    probeSpeed = 0;
+  }
+
+  lastProbeCommandAt = probeDirection == 0 ? 0 : millis();
+  sendBridgeProbeCommand();
+  sendStatus(clientNum);
+
+  Serial.printf("Probe seq=%d direction=%d speed=%d\n", lastSeq, probeDirection, probeSpeed);
 }
 
 void handleMissionUploadMessage(uint8_t clientNum, const String& type, const String& message)
@@ -642,7 +698,10 @@ void readBridgeStatus()
       if (bridgeLineLength > 0)
       {
         bridgeLine[bridgeLineLength] = '\0';
-        applyBridgeStatus(bridgeLine);
+        if (bridgeLine[0] == 'S')
+          applyBridgeStatus(bridgeLine);
+        else if (bridgeLine[0] == 'P')
+          applyBridgeProbeStatus(bridgeLine);
         bridgeLineLength = 0;
       }
       continue;
@@ -676,6 +735,20 @@ void applyBridgeStatus(const char* line)
     sendStatusBroadcast();
 }
 
+void applyBridgeProbeStatus(const char* line)
+{
+  int values[3] = { bridgeLastSeq, bridgeProbeDirection, bridgeProbeSpeed };
+  if (!parseCsvIntegers(line, values, 3))
+    return;
+
+  bridgeLastSeq = values[0];
+  bridgeProbeDirection = constrain(values[1], -1, 1);
+  bridgeProbeSpeed = constrain(values[2], 0, 255);
+
+  if (hasSocketClient())
+    sendStatusBroadcast();
+}
+
 void sendBridgeCommand()
 {
   if (!kUseArduinoBridge)
@@ -685,15 +758,40 @@ void sendBridgeCommand()
   lastBridgeCommandAt = millis();
 }
 
+void sendBridgeProbeCommand()
+{
+  if (!kUseArduinoBridge)
+    return;
+
+  BridgeSerial.printf("W,%d,%d,%d\n", lastSeq, probeDirection, probeSpeed);
+  lastProbeBridgeCommandAt = millis();
+}
+
+void stopProbe(const char* reason)
+{
+  probeDirection = 0;
+  probeSpeed = 0;
+  lastProbeCommandAt = 0;
+  sendBridgeProbeCommand();
+  if (hasSocketClient())
+    sendStatusBroadcast();
+
+  Serial.printf("Probe stopped: %s\n", reason);
+}
+
 void neutralize(const char* reason)
 {
   armed = false;
   leftMicros = kNeutralMicros;
   rightMicros = kNeutralMicros;
+  probeDirection = 0;
+  probeSpeed = 0;
   lastCommandAt = 0;
+  lastProbeCommandAt = 0;
 
   applyEscOutputs(leftMicros, rightMicros);
   sendBridgeCommand();
+  sendBridgeProbeCommand();
   if (hasSocketClient())
     sendStatusBroadcast();
 
@@ -777,6 +875,10 @@ String buildStatusJson()
   message += leftMicros;
   message += F(",\"right\":");
   message += rightMicros;
+  message += F(",\"probeDirection\":\"");
+  message += probeDirection > 0 ? F("lower") : probeDirection < 0 ? F("raise") : F("stop");
+  message += F("\",\"probeSpeed\":");
+  message += probeSpeed;
   message += F(",\"rssi\":");
   message += (WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -1);
 
@@ -878,7 +980,7 @@ void markSocketDisconnected(uint8_t clientNum)
 
 bool parseCsvIntegers(const char* line, int* values, int expectedCount)
 {
-  if (line[0] != 'S' || line[1] != ',')
+  if (line[1] != ',')
     return false;
 
   const char* cursor = line + 2;
