@@ -72,6 +72,24 @@ export type DriveStatus = {
   speedMps?: number
   batteryPercent?: number
   depthMeters?: number
+  sensorFresh?: boolean
+  sensorAgeMs?: number
+  sensorSeq?: number
+  temperatureC?: number
+  tempRawGpio?: number
+  turbidityRaw?: number
+  turbidityVoltage?: number
+  phRaw?: number
+  phVoltage?: number
+  distanceCm?: number
+  dissolvedOxygenRaw?: number
+  dissolvedOxygenVoltage?: number
+  tdsRaw?: number
+  tdsVoltage?: number
+  uvRaw?: number
+  uvVoltage?: number
+  lightRaw?: number
+  lightVoltage?: number
   lastSeenUtc: string
 }
 

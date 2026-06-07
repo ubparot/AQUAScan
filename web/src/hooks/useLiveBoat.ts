@@ -3,6 +3,33 @@ import { buildDriveCommand, neutralMicros } from '../domain/drive'
 import type { AquaMission, AquaSample, DriveCommand, DriveStatus, LiveSettings, TelemetryHealth, TelemetrySnapshot } from '../types/aqua'
 
 type SocketState = 'idle' | 'connecting' | 'connected' | 'error'
+type BoatSocketMessage = Partial<DriveStatus> & {
+  type?: string
+  left?: number
+  right?: number
+  lastSeq?: number
+  rssi?: number
+  lat?: number
+  lng?: number
+  lon?: number
+  latitude?: number
+  longitude?: number
+  altitude?: number
+  heading?: number
+  headingDeg?: number
+  speed?: number
+  speedMps?: number
+  battery?: number
+  batteryPercent?: number
+  depth?: number
+  depthMeters?: number
+  probeDirection?: 'raise' | 'lower' | 'stop'
+  probeSpeed?: number
+}
+
+const telemetryUiIntervalMs = 300
+const telemetryAgeIntervalMs = 1000
+const telemetryHistoryLimit = 24
 
 const initialStatus: DriveStatus = {
   connected: false,
@@ -25,18 +52,65 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     buildDriveCommand(0, [0, 0], settings, false, false),
   )
   const socketRef = useRef<WebSocket | null>(null)
+  const statusRef = useRef<DriveStatus>(initialStatus)
   const seqRef = useRef(0)
   const lastSeenRef = useRef(0)
+  const lastUiStatusAtRef = useRef(0)
+  const pendingStatusRef = useRef<{ status: DriveStatus; receivedAtMs: number } | undefined>(undefined)
+  const uiFlushTimerRef = useRef<number | undefined>(undefined)
   const simProgressRef = useRef(0)
   const simLastTickRef = useRef(0)
+
+  const publishPendingStatus = useCallback(() => {
+    const pending = pendingStatusRef.current
+    if (!pending) return
+
+    pendingStatusRef.current = undefined
+    uiFlushTimerRef.current = undefined
+    lastUiStatusAtRef.current = Date.now()
+
+    statusRef.current = pending.status
+    setStatus(pending.status)
+    setPacketAgeMs(Math.max(0, Date.now() - lastSeenRef.current))
+    setHistory((previous) => [
+      { ...pending.status, receivedAtMs: pending.receivedAtMs, packetAgeMs: 0 },
+      ...previous.slice(0, telemetryHistoryLimit - 1),
+    ])
+    setEstop(Boolean(pending.status.estop))
+  }, [])
+
+  const queueStatusForUi = useCallback((status: DriveStatus, receivedAtMs: number) => {
+    pendingStatusRef.current = { status, receivedAtMs }
+
+    const elapsed = receivedAtMs - lastUiStatusAtRef.current
+    if (elapsed >= telemetryUiIntervalMs) {
+      if (uiFlushTimerRef.current !== undefined) {
+        window.clearTimeout(uiFlushTimerRef.current)
+        uiFlushTimerRef.current = undefined
+      }
+      publishPendingStatus()
+      return
+    }
+
+    if (uiFlushTimerRef.current === undefined) {
+      uiFlushTimerRef.current = window.setTimeout(publishPendingStatus, telemetryUiIntervalMs - elapsed)
+    }
+  }, [publishPendingStatus])
 
   const disconnect = useCallback((reason = 'Disconnected') => {
     const socket = socketRef.current
     socketRef.current = null
+    if (uiFlushTimerRef.current !== undefined) {
+      window.clearTimeout(uiFlushTimerRef.current)
+      uiFlushTimerRef.current = undefined
+    }
+    pendingStatusRef.current = undefined
     if (socket && socket.readyState <= WebSocket.OPEN) socket.close(1000, reason)
     setSocketState('idle')
     setArmed(false)
-    setStatus((previous) => ({ ...previous, connected: false, armed: false, leftMicros: neutralMicros, rightMicros: neutralMicros }))
+    const nextStatus = { ...statusRef.current, connected: false, armed: false, leftMicros: neutralMicros, rightMicros: neutralMicros }
+    statusRef.current = nextStatus
+    setStatus(nextStatus)
     setPacketAgeMs(undefined)
   }, [])
 
@@ -77,58 +151,39 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
 
     socket.addEventListener('message', (event) => {
       try {
-        const message = JSON.parse(String(event.data)) as Partial<DriveStatus> & {
-          type?: string
-          left?: number
-          right?: number
-          lastSeq?: number
-          rssi?: number
-          lat?: number
-          lng?: number
-          lon?: number
-          latitude?: number
-          longitude?: number
-          altitude?: number
-          heading?: number
-          headingDeg?: number
-          speed?: number
-          speedMps?: number
-          battery?: number
-          batteryPercent?: number
-          depth?: number
-          depthMeters?: number
-          probeDirection?: 'raise' | 'lower' | 'stop'
-          probeSpeed?: number
-        }
-        if (message.type !== 'status') return
+        const message = JSON.parse(String(event.data)) as BoatSocketMessage
+        if (message.type !== 'status' && message.type !== 'sensor') return
         const receivedAtMs = Date.now()
         lastSeenRef.current = receivedAtMs
-        const nextStatus = {
-          connected: Boolean(message.connected),
-          armed: Boolean(message.armed),
-          estop: Boolean(message.estop),
-          lastSeq: message.lastSeq ?? 0,
-          leftMicros: message.left ?? neutralMicros,
-          rightMicros: message.right ?? neutralMicros,
-          probeDirection: message.probeDirection,
-          probeSpeed: message.probeSpeed,
-          rssi: message.rssi,
-          latitude: firstNumber(message.latitude, message.lat),
-          longitude: firstNumber(message.longitude, message.lon, message.lng),
-          altitude: firstNumber(message.altitude),
-          headingDeg: firstNumber(message.headingDeg, message.heading),
-          speedMps: firstNumber(message.speedMps, message.speed),
-          batteryPercent: firstNumber(message.batteryPercent, message.battery),
-          depthMeters: firstNumber(message.depthMeters, message.depth),
-          lastSeenUtc: new Date().toISOString(),
-        }
-        setStatus(nextStatus)
-        setPacketAgeMs(0)
-        setHistory((previous) => [
-          { ...nextStatus, receivedAtMs, packetAgeMs: 0 },
-          ...previous.slice(0, 59).map((snapshot) => ({ ...snapshot, packetAgeMs: receivedAtMs - snapshot.receivedAtMs })),
-        ])
-        setEstop(Boolean(message.estop))
+        const previousStatus = pendingStatusRef.current?.status ?? statusRef.current
+        const nextStatus = message.type === 'sensor'
+          ? {
+            ...previousStatus,
+            connected: message.connected ?? previousStatus.connected,
+            ...sensorFieldsFromMessage(message, previousStatus),
+            lastSeenUtc: new Date().toISOString(),
+          }
+          : {
+            connected: Boolean(message.connected),
+            armed: Boolean(message.armed),
+            estop: Boolean(message.estop),
+            lastSeq: message.lastSeq ?? 0,
+            leftMicros: message.left ?? neutralMicros,
+            rightMicros: message.right ?? neutralMicros,
+            probeDirection: message.probeDirection,
+            probeSpeed: message.probeSpeed,
+            rssi: message.rssi,
+            latitude: firstNumber(message.latitude, message.lat),
+            longitude: firstNumber(message.longitude, message.lon, message.lng),
+            altitude: firstNumber(message.altitude),
+            headingDeg: firstNumber(message.headingDeg, message.heading),
+            speedMps: firstNumber(message.speedMps, message.speed),
+            batteryPercent: firstNumber(message.batteryPercent, message.battery),
+            depthMeters: firstNumber(message.depthMeters, message.depth),
+            ...sensorFieldsFromMessage(message, previousStatus),
+            lastSeenUtc: new Date().toISOString(),
+          }
+        queueStatusForUi(nextStatus, receivedAtMs)
       } catch {
         setSocketState('error')
       }
@@ -144,7 +199,7 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
         setPacketAgeMs(undefined)
       }
     })
-  }, [settings.host, settings.port, simulator?.enabled])
+  }, [queueStatusForUi, settings.host, settings.port, simulator?.enabled])
 
   const toggleArm = useCallback(() => {
     if (!liveMode || socketState !== 'connected' || estop) return
@@ -206,6 +261,7 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
         disconnect('Timed out')
         return
       }
+      if (!armed && !estop) return
       const command = buildDriveCommand(seqRef.current + 1, joystick, settings, armed, estop)
       seqRef.current = command.seq
       setLastCommand(command)
@@ -222,6 +278,24 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     }, intervalMs)
     return () => window.clearInterval(timer)
   }, [armed, disconnect, estop, joystick, liveMode, sendJson, settings, simulator?.enabled, socketState])
+
+  useEffect(() => {
+    if (!liveMode || socketState !== 'connected' || armed || estop || simulator?.enabled) return
+
+    const command = buildDriveCommand(seqRef.current + 1, [0, 0], settings, false, false)
+    seqRef.current = command.seq
+    setLastCommand(command)
+    sendJson({
+      type: 'drive',
+      seq: command.seq,
+      armed: false,
+      estop: false,
+      x: 0,
+      y: 0,
+      left: neutralMicros,
+      right: neutralMicros,
+    })
+  }, [armed, estop, liveMode, sendJson, settings, simulator?.enabled, socketState])
 
   useEffect(() => {
     if (!simulator?.enabled || !liveMode || socketState !== 'connected') return
@@ -254,23 +328,17 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
         lastSeenUtc: new Date().toISOString(),
       }
       lastSeenRef.current = now
-      setStatus(nextStatus)
-      setPacketAgeMs(0)
-      setHistory((previous) => [
-        { ...nextStatus, receivedAtMs: now, packetAgeMs: 0 },
-        ...previous.slice(0, 59).map((snapshot) => ({ ...snapshot, packetAgeMs: now - snapshot.receivedAtMs })),
-      ])
+      queueStatusForUi(nextStatus, now)
     }, 250)
     return () => window.clearInterval(timer)
-  }, [armed, estop, joystick, lastCommand.leftMicros, lastCommand.rightMicros, liveMode, simulator?.enabled, simulator?.mission, socketState, status.probeDirection, status.probeSpeed])
+  }, [armed, estop, joystick, lastCommand.leftMicros, lastCommand.rightMicros, liveMode, queueStatusForUi, simulator?.enabled, simulator?.mission, socketState, status.probeDirection, status.probeSpeed])
 
   useEffect(() => {
     if (socketState !== 'connected' || lastSeenRef.current <= 0) return
     const timer = window.setInterval(() => {
       const age = Date.now() - lastSeenRef.current
       setPacketAgeMs(age)
-      setHistory((previous) => previous.map((snapshot) => ({ ...snapshot, packetAgeMs: Date.now() - snapshot.receivedAtMs })))
-    }, 250)
+    }, telemetryAgeIntervalMs)
     return () => window.clearInterval(timer)
   }, [socketState])
 
@@ -302,6 +370,29 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     triggerEstop,
     resetEstop,
     sendProbeCommand,
+  }
+}
+
+function sensorFieldsFromMessage(message: BoatSocketMessage, previous: DriveStatus) {
+  return {
+    sensorFresh: message.sensorFresh ?? previous.sensorFresh,
+    sensorAgeMs: firstNumber(message.sensorAgeMs) ?? previous.sensorAgeMs,
+    sensorSeq: firstNumber(message.sensorSeq) ?? previous.sensorSeq,
+    temperatureC: firstNumber(message.temperatureC) ?? previous.temperatureC,
+    tempRawGpio: firstNumber(message.tempRawGpio) ?? previous.tempRawGpio,
+    turbidityRaw: firstNumber(message.turbidityRaw) ?? previous.turbidityRaw,
+    turbidityVoltage: firstNumber(message.turbidityVoltage) ?? previous.turbidityVoltage,
+    phRaw: firstNumber(message.phRaw) ?? previous.phRaw,
+    phVoltage: firstNumber(message.phVoltage) ?? previous.phVoltage,
+    distanceCm: firstNumber(message.distanceCm) ?? previous.distanceCm,
+    dissolvedOxygenRaw: firstNumber(message.dissolvedOxygenRaw) ?? previous.dissolvedOxygenRaw,
+    dissolvedOxygenVoltage: firstNumber(message.dissolvedOxygenVoltage) ?? previous.dissolvedOxygenVoltage,
+    tdsRaw: firstNumber(message.tdsRaw) ?? previous.tdsRaw,
+    tdsVoltage: firstNumber(message.tdsVoltage) ?? previous.tdsVoltage,
+    uvRaw: firstNumber(message.uvRaw) ?? previous.uvRaw,
+    uvVoltage: firstNumber(message.uvVoltage) ?? previous.uvVoltage,
+    lightRaw: firstNumber(message.lightRaw) ?? previous.lightRaw,
+    lightVoltage: firstNumber(message.lightVoltage) ?? previous.lightVoltage,
   }
 }
 

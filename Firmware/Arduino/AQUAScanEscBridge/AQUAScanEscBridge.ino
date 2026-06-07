@@ -2,8 +2,9 @@
   AQUAScan Arduino boat ESC bridge.
 
   Target board: Arduino Mega 2560
-  USB Serial: 115200 debug monitor
+  USB Serial: 19200 debug monitor
   Serial2: 19200 link to the ESP32 boat gateway
+  Serial3: 19200 receive-only RS-485 probe link
 
   ESP32 -> Arduino:
     D,<seq>,<armed>,<estop>,<leftMicros>,<rightMicros>
@@ -12,6 +13,13 @@
   Arduino -> ESP32:
     S,<seq>,<armed>,<estop>,<leftMicros>,<rightMicros>
     P,<seq>,<direction>,<speed>
+    R,<original RS-485 probe line>
+
+  RS-485 wiring:
+    RO     -> RX3 pin 15
+    DI     -> TX3 pin 14
+    RE/DE  -> pin 45
+    GND    -> Arduino GND
 */
 
 #include <Servo.h>
@@ -22,17 +30,23 @@ namespace
   const uint8_t kRightEscPin = 10;
   const uint8_t kWinchLowerPin = 7;
   const uint8_t kWinchRaisePin = 6;
+  const uint8_t kRs485DirPin = 45;
 
   const unsigned long kBridgeBaudRate = 19200;
-  const unsigned long kDebugBaudRate = 115200;
+  const unsigned long kRs485BaudRate = 19200;
+  const unsigned long kDebugBaudRate = 19200;
   const unsigned long kStartupNeutralDelayMs = 5000;
   const unsigned long kCommandTimeoutMs = 3500;
-  const unsigned long kStatusIntervalMs = 250;
+  const unsigned long kStatusIntervalMs = 1000;
+  const unsigned long kRs485DiagnosticIntervalMs = 2000;
+  const size_t kBridgeReadBudget = 48;
+  const size_t kRs485ReadBudget = 128;
 
   const int kNeutralMicros = 1500;
   const int kMinMicros = 1000;
   const int kMaxMicros = 2000;
   const size_t kMaxLineLength = 96;
+  const size_t kMaxRs485LineLength = 220;
 }
 
 Servo leftEsc;
@@ -40,6 +54,8 @@ Servo rightEsc;
 
 char serialLine[kMaxLineLength];
 size_t serialLineLength = 0;
+char rs485Line[kMaxRs485LineLength];
+size_t rs485LineLength = 0;
 
 bool armed = false;
 bool estop = false;
@@ -51,9 +67,17 @@ int winchSpeed = 0;
 unsigned long lastCommandAt = 0;
 unsigned long lastWinchCommandAt = 0;
 unsigned long lastStatusAt = 0;
+unsigned long lastRs485DiagnosticAt = 0;
+unsigned long receivedRs485ByteCount = 0;
+unsigned long receivedRs485LineCount = 0;
+unsigned long receivedProbeLineCount = 0;
 
 void applyOutputs(int left, int right);
 void readBridgeCommands();
+void setRs485ReceiveMode();
+void readRs485Probe();
+void printRs485Diagnostics();
+void forwardRs485ProbeLine(const char* line);
 void handleCommand(const char* line);
 void handleDriveCommand(const char* line);
 void handleWinchCommand(const char* line);
@@ -72,11 +96,14 @@ void setup()
 {
   Serial.begin(kDebugBaudRate);
   Serial2.begin(kBridgeBaudRate);
+  Serial3.begin(kRs485BaudRate);
 
   leftEsc.attach(kLeftEscPin);
   rightEsc.attach(kRightEscPin);
   pinMode(kWinchLowerPin, OUTPUT);
   pinMode(kWinchRaisePin, OUTPUT);
+  pinMode(kRs485DirPin, OUTPUT);
+  setRs485ReceiveMode();
 
   applyOutputs(kNeutralMicros, kNeutralMicros);
   applyWinch(0, 0);
@@ -85,6 +112,7 @@ void setup()
 
   sendStatus();
   Serial.println(F("AQUAScan Mega ESC bridge ready on Serial2."));
+  Serial.println(F("RS-485 probe receiver ready on Serial3 pins RX3=15/TX3=14, RE/DE=45; forwarding probe lines to ESP32."));
 }
 
 void loop()
@@ -92,8 +120,10 @@ void loop()
   const unsigned long now = millis();
 
   readBridgeCommands();
+  readRs485Probe();
+  printRs485Diagnostics();
 
-  if (lastCommandAt > 0 && now - lastCommandAt > kCommandTimeoutMs)
+  if (armed && lastCommandAt > 0 && now - lastCommandAt > kCommandTimeoutMs)
     neutralize("command timeout", false);
 
   if (lastWinchCommandAt > 0 && now - lastWinchCommandAt > kCommandTimeoutMs)
@@ -106,11 +136,94 @@ void loop()
   }
 }
 
+void setRs485ReceiveMode()
+{
+  // MAX485-style module: DE LOW disables transmit and RE LOW enables receive.
+  digitalWrite(kRs485DirPin, LOW);
+}
+
+void readRs485Probe()
+{
+  size_t processed = 0;
+  while (Serial3.available() > 0 && processed < kRs485ReadBudget)
+  {
+    const char incoming = static_cast<char>(Serial3.read());
+    processed++;
+    receivedRs485ByteCount++;
+
+    if (incoming == '\n' || incoming == '\r')
+    {
+      if (rs485LineLength > 0)
+      {
+        rs485Line[rs485LineLength] = '\0';
+        forwardRs485ProbeLine(rs485Line);
+        rs485LineLength = 0;
+      }
+      continue;
+    }
+
+    if (static_cast<uint8_t>(incoming) < 32)
+      continue;
+
+    if (rs485LineLength < kMaxRs485LineLength - 1)
+    {
+      rs485Line[rs485LineLength++] = incoming;
+    }
+    else
+    {
+      rs485LineLength = 0;
+      Serial.println(F("RS-485 probe line too long. Buffer cleared."));
+    }
+  }
+}
+
+void printRs485Diagnostics()
+{
+  const unsigned long now = millis();
+  if (now - lastRs485DiagnosticAt < kRs485DiagnosticIntervalMs)
+    return;
+
+  lastRs485DiagnosticAt = now;
+  Serial.print(F("RS485 listening: bytes="));
+  Serial.print(receivedRs485ByteCount);
+  Serial.print(F(" completeLines="));
+  Serial.print(receivedRs485LineCount);
+  Serial.print(F(" bufferedBytes="));
+  Serial.println(rs485LineLength);
+}
+
+void forwardRs485ProbeLine(const char* line)
+{
+  receivedRs485LineCount++;
+  Serial.print(F("RS485 LINE "));
+  Serial.print(receivedRs485LineCount);
+  Serial.print(F(": "));
+  Serial.println(line);
+
+  const bool prefixedProbeLine = line[0] == 'P' && line[1] == ',';
+  const bool bareSensorCsv = line[0] >= '0' && line[0] <= '9';
+  if (!prefixedProbeLine && !bareSensorCsv)
+  {
+    Serial.println(F("RS485 line ignored: expected P-prefixed or bare sensor CSV."));
+    return;
+  }
+
+  receivedProbeLineCount++;
+  Serial2.print(F("R,"));
+  Serial2.println(line);
+
+  Serial.print(F("Forwarded probe line "));
+  Serial.print(receivedProbeLineCount);
+  Serial.println(F(" to boat ESP32."));
+}
+
 void readBridgeCommands()
 {
-  while (Serial2.available() > 0)
+  size_t processed = 0;
+  while (Serial2.available() > 0 && processed < kBridgeReadBudget)
   {
     const char incoming = static_cast<char>(Serial2.read());
+    processed++;
 
     if (incoming == '\n' || incoming == '\r')
     {

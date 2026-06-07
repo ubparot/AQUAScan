@@ -61,11 +61,11 @@ export function parseProjectFile(contents: string): AquaProjectFile {
     liveSettings:
       parsed.liveSettings ||
       ({
-        host: '192.168.0.67',
+        host: '192.168.0.187',
         port: 81,
         deadzone: 0.08,
         maxOutput: 1,
-        sendRateHz: 20,
+        sendRateHz: 10,
         timeoutSeconds: 1,
       } satisfies LiveSettings),
   }

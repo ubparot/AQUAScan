@@ -2,7 +2,7 @@
   AQUAScan Arduino Mega direct motor test.
 
   Target board: Arduino Mega 2560
-  USB Serial: 115200
+  USB Serial: 19200
 
   Wiring:
     Left ESC signal  -> D9
@@ -33,7 +33,7 @@ namespace
   const uint8_t kLeftEscPin = 9;
   const uint8_t kRightEscPin = 10;
 
-  const unsigned long kBaudRate = 115200;
+  const unsigned long kBaudRate = 19200;
   const unsigned long kStartupNeutralDelayMs = 5000;
   const unsigned long kStatusIntervalMs = 500;
 

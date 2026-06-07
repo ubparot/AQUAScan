@@ -78,11 +78,11 @@ type OperatorAlert = {
 }
 
 const defaultSettings: LiveSettings = {
-  host: '192.168.0.67',
+  host: '192.168.0.187',
   port: 81,
   deadzone: 0.08,
   maxOutput: 1,
-  sendRateHz: 20,
+  sendRateHz: 10,
   timeoutSeconds: 1,
 }
 
@@ -1292,6 +1292,36 @@ function App() {
                 </label>
               </div>
               {missionError && <p className="error-copy">{missionError}</p>}
+              <article className="run-panel">
+                <div className="mission-tools-header">
+                  <div>
+                    <p className="eyebrow">Live probe telemetry</p>
+                    <h3>RS-485 sensor stream</h3>
+                  </div>
+                  <span className="muted">
+                    {live.status.sensorFresh === undefined ? 'No packets' : live.status.sensorFresh ? 'Fresh' : 'Stale'}
+                  </span>
+                </div>
+                <div className="telemetry-grid">
+                  <Readout label="Sensor seq" value={live.status.sensorSeq !== undefined ? String(live.status.sensorSeq) : '--'} />
+                  <Readout label="Sensor age" value={live.status.sensorAgeMs !== undefined ? formatAge(live.status.sensorAgeMs) : '--'} />
+                  <Readout label="Temperature" value={formatLiveSensorValue(live.status.temperatureC, 2, 'deg C')} />
+                  <Readout label="Distance" value={formatLiveSensorValue(live.status.distanceCm, 1, 'cm')} />
+                  <Readout label="Turbidity voltage" value={formatLiveSensorValue(live.status.turbidityVoltage, 3, 'V')} />
+                  <Readout label="Turbidity raw" value={formatLiveSensorValue(live.status.turbidityRaw, 0)} />
+                  <Readout label="pH voltage" value={formatLiveSensorValue(live.status.phVoltage, 3, 'V')} />
+                  <Readout label="pH raw" value={formatLiveSensorValue(live.status.phRaw, 0)} />
+                  <Readout label="DO voltage" value={formatLiveSensorValue(live.status.dissolvedOxygenVoltage, 3, 'V')} />
+                  <Readout label="DO raw" value={formatLiveSensorValue(live.status.dissolvedOxygenRaw, 0)} />
+                  <Readout label="TDS voltage" value={formatLiveSensorValue(live.status.tdsVoltage, 3, 'V')} />
+                  <Readout label="TDS raw" value={formatLiveSensorValue(live.status.tdsRaw, 0)} />
+                  <Readout label="UV voltage" value={formatLiveSensorValue(live.status.uvVoltage, 3, 'V')} />
+                  <Readout label="UV raw" value={formatLiveSensorValue(live.status.uvRaw, 0)} />
+                  <Readout label="Light voltage" value={formatLiveSensorValue(live.status.lightVoltage, 3, 'V')} />
+                  <Readout label="Light raw" value={formatLiveSensorValue(live.status.lightRaw, 0)} />
+                </div>
+                <p className="status-copy">Raw and voltage readings are shown directly from the probe stream. Calibrate them before treating them as pH, DO, TDS, turbidity, UV, or light measurements.</p>
+              </article>
               <label className="field-stack">
                 <span>Metric</span>
                 <select value={metricId} onChange={(event) => setMetricId(event.target.value)}>
@@ -2019,6 +2049,11 @@ function alertSeverityRank(severity: OperatorAlertSeverity) {
 
 function formatAge(ageMs: number) {
   return ageMs < 1000 ? `${Math.round(ageMs)} ms` : `${(ageMs / 1000).toFixed(1)} s`
+}
+
+function formatLiveSensorValue(value: number | undefined, decimals: number, unit = '') {
+  if (value === undefined || !Number.isFinite(value)) return '--'
+  return `${value.toFixed(decimals)}${unit ? ` ${unit}` : ''}`
 }
 
 function formatAlertStatus(activeAlerts: OperatorAlert[], primaryAlert: OperatorAlert) {

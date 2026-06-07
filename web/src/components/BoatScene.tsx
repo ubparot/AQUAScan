@@ -24,7 +24,7 @@ export function BoatScene({ mission, metricId, boatPosition, boatHeadingRad, lay
   const [draggingSampleIndex, setDraggingSampleIndex] = useState<number>()
   return (
     <div className="scene-frame">
-      <Canvas camera={{ position: [bounds.center[0] + 18, 22, bounds.center[2] + 26], fov: 48 }} dpr={[1, 1.75]}>
+      <Canvas camera={{ position: [bounds.center[0] + 18, 22, bounds.center[2] + 26], fov: 48 }} dpr={[1, 1.25]} performance={{ min: 0.6 }}>
         <color attach="background" args={['#bfeeff']} />
         <fog attach="fog" args={['#d8f7ff', 120, 520]} />
         <hemisphereLight args={['#fff8d8', '#80c7d6', 1.4]} />
@@ -204,7 +204,7 @@ function WaterPlane({ center, radius }: { center: Vec3; radius: number }) {
 
   return (
     <mesh position={[center[0], -0.18, center[2]]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[waterSize, waterSize, 300, 300]} />
+      <planeGeometry args={[waterSize, waterSize, 120, 120]} />
       <shaderMaterial
         ref={material}
         uniforms={uniforms}
@@ -283,8 +283,8 @@ const waterFragmentShader = `
 
 function createWaterMaps() {
   return {
-    heightMap: createNoiseTexture(256, 10, 0.62),
-    detailMap: createNoiseTexture(256, 38, 0.82),
+    heightMap: createNoiseTexture(128, 10, 0.62),
+    detailMap: createNoiseTexture(128, 38, 0.82),
   }
 }
 

@@ -2,7 +2,7 @@
   AQUAScan ESP32 boat gateway.
 
   Target board: ESP32 DevKit-style board
-  USB Serial: 115200 debug monitor
+  USB Serial: 19200 debug monitor
   WebSocket: ws://<esp32-ip>:81/
   Direct ESC PWM output: GPIO18 left, GPIO19 right
   Optional Serial2 bridge: 19200 link to the Arduino Mega ESC bridge
@@ -53,8 +53,9 @@ namespace
   const unsigned long kStatusBroadcastIntervalMs = 250;
   const unsigned long kBatterySampleIntervalMs = 1000;
   const unsigned long kGpsFreshMs = 3000;
+  const unsigned long kSensorFreshMs = 3000;
 
-  const long kDebugBaudRate = 115200;
+  const long kDebugBaudRate = 19200;
   const long kBridgeBaudRate = 19200;
   const int kBridgeRxPin = 16;
   const int kBridgeTxPin = 17;
@@ -87,7 +88,8 @@ namespace
   const int kNeutralMicros = 1500;
   const int kMinMicros = 1000;
   const int kMaxMicros = 2000;
-  const size_t kMaxBridgeLineLength = 96;
+  const size_t kMaxBridgeCommandLength = 64;
+  const size_t kMaxBridgeLineLength = 256;
   const uint8_t kTrackedSocketSlots = 8;
 }
 
@@ -122,6 +124,7 @@ int bridgeProbeDirection = 0;
 int bridgeProbeSpeed = 0;
 unsigned long lastCommandAt = 0;
 unsigned long lastBridgeCommandAt = 0;
+unsigned long lastDriveLogAt = 0;
 unsigned long lastProbeCommandAt = 0;
 unsigned long lastProbeBridgeCommandAt = 0;
 unsigned long lastStatusBroadcastAt = 0;
@@ -137,6 +140,25 @@ unsigned long lastGpsFixAt = 0;
 
 float batteryVoltage = NAN;
 float batteryPercent = NAN;
+
+bool sensorReceived = false;
+unsigned long lastSensorAt = 0;
+int sensorSeq = 0;
+float sensorTemperatureC = NAN;
+int sensorTempRawGpio = 0;
+int sensorTurbidityRaw = 0;
+float sensorTurbidityVoltage = NAN;
+int sensorPhRaw = 0;
+float sensorPhVoltage = NAN;
+float sensorDistanceCm = NAN;
+int sensorDissolvedOxygenRaw = 0;
+float sensorDissolvedOxygenVoltage = NAN;
+int sensorTdsRaw = 0;
+float sensorTdsVoltage = NAN;
+int sensorUvRaw = 0;
+float sensorUvVoltage = NAN;
+int sensorLightRaw = 0;
+float sensorLightVoltage = NAN;
 
 bool missionUploadActive = false;
 String uploadMissionId;
@@ -163,6 +185,8 @@ void writeEscPulse(int pin, int channel, int micros);
 void readBridgeStatus();
 void applyBridgeStatus(const char* line);
 void applyBridgeProbeStatus(const char* line);
+void applyBridgeSensorStatus(const char* line);
+bool writeBridgeLine(const char* line);
 void sendBridgeCommand();
 void sendBridgeProbeCommand();
 void stopProbe(const char* reason);
@@ -172,13 +196,16 @@ void updateGps();
 void updateBattery();
 void sendStatus(uint8_t clientNum);
 void sendStatusBroadcast();
+void sendSensorBroadcast();
 String buildStatusJson();
+String buildSensorJson();
 void sendMissionAck(uint8_t clientNum, const String& missionId, int seq, bool accepted, const String& text);
 void sendMissionProgress(uint8_t clientNum);
 bool hasSocketClient();
 void markSocketConnected(uint8_t clientNum);
 void markSocketDisconnected(uint8_t clientNum);
 bool parseCsvIntegers(const char* line, int* values, int expectedCount);
+bool parseCsvFloats(const char* line, float* values, int expectedCount);
 int clampPulse(int value);
 String socketPayloadToString(const char* payload, size_t length);
 String readJsonString(const String& message, const char* key, const String& fallback);
@@ -187,6 +214,7 @@ int readJsonInt(const String& message, const char* key, int fallback);
 float readJsonFloat(const String& message, const char* key, float fallback);
 int findJsonValueStart(const String& message, const char* key);
 String escapeJson(const String& value);
+void appendSensorJsonFields(String& message);
 void appendJsonNumber(String& json, const char* key, double value, int decimals);
 
 void setup()
@@ -202,7 +230,12 @@ void setup()
   if (kUseArduinoBridge)
   {
     BridgeSerial.begin(kBridgeBaudRate, SERIAL_8N1, kBridgeRxPin, kBridgeTxPin);
-    Serial.println(F("BOOT: Bridge UART started."));
+    Serial.print(F("BOOT: Bridge UART started at "));
+    Serial.print(kBridgeBaudRate);
+    Serial.print(F(" 8N1, RX GPIO"));
+    Serial.print(kBridgeRxPin);
+    Serial.print(F(", TX GPIO"));
+    Serial.println(kBridgeTxPin);
   }
   else
   {
@@ -264,7 +297,7 @@ void loop()
   if (kUseArduinoBridge && probeDirection != 0 && now - lastProbeBridgeCommandAt >= kBridgeKeepaliveIntervalMs)
     sendBridgeProbeCommand();
 
-  if (lastCommandAt > 0 && now - lastCommandAt > kCommandTimeoutMs)
+  if (armed && lastCommandAt > 0 && now - lastCommandAt > kCommandTimeoutMs)
     neutralize("command timeout");
 
   if (lastProbeCommandAt > 0 && now - lastProbeCommandAt > kCommandTimeoutMs)
@@ -362,10 +395,13 @@ void handleDriveMessage(uint8_t clientNum, const String& message)
   lastCommandAt = millis();
 
   applyEscOutputs(leftMicros, rightMicros);
-  sendBridgeCommand();
-  sendStatus(clientNum);
 
-  Serial.printf("Drive seq=%d armed=%d estop=%d left=%d right=%d\n", lastSeq, armed ? 1 : 0, estop ? 1 : 0, leftMicros, rightMicros);
+  const unsigned long now = millis();
+  if (now - lastDriveLogAt >= 1000)
+  {
+    lastDriveLogAt = now;
+    Serial.printf("Drive seq=%d armed=%d estop=%d left=%d right=%d\n", lastSeq, armed ? 1 : 0, estop ? 1 : 0, leftMicros, rightMicros);
+  }
 }
 
 void handleEstopMessage(uint8_t clientNum, const String& message)
@@ -702,6 +738,8 @@ void readBridgeStatus()
           applyBridgeStatus(bridgeLine);
         else if (bridgeLine[0] == 'P')
           applyBridgeProbeStatus(bridgeLine);
+        else if (bridgeLine[0] == 'R')
+          applyBridgeSensorStatus(bridgeLine);
         bridgeLineLength = 0;
       }
       continue;
@@ -730,9 +768,6 @@ void applyBridgeStatus(const char* line)
   bridgeEstop = values[2] != 0;
   bridgeLeftMicros = clampPulse(values[3]);
   bridgeRightMicros = clampPulse(values[4]);
-
-  if (hasSocketClient())
-    sendStatusBroadcast();
 }
 
 void applyBridgeProbeStatus(const char* line)
@@ -744,9 +779,49 @@ void applyBridgeProbeStatus(const char* line)
   bridgeLastSeq = values[0];
   bridgeProbeDirection = constrain(values[1], -1, 1);
   bridgeProbeSpeed = constrain(values[2], 0, 255);
+}
+
+void applyBridgeSensorStatus(const char* line)
+{
+  if (line[0] != 'R' || line[1] != ',')
+    return;
+
+  const char* payload = line + 2;
+  if (payload[0] == 'P' && payload[1] == ',')
+    payload += 2;
+
+  float values[16] = {};
+  if (!parseCsvFloats(payload, values, 16))
+  {
+    Serial.print(F("Ignored malformed sensor line: "));
+    Serial.println(line);
+    return;
+  }
+
+  sensorReceived = true;
+  lastSensorAt = millis();
+  sensorSeq = static_cast<int>(values[0]);
+  sensorTemperatureC = values[1];
+  sensorTempRawGpio = static_cast<int>(values[2]);
+  sensorTurbidityRaw = static_cast<int>(values[3]);
+  sensorTurbidityVoltage = values[4];
+  sensorPhRaw = static_cast<int>(values[5]);
+  sensorPhVoltage = values[6];
+  sensorDistanceCm = values[7];
+  sensorDissolvedOxygenRaw = static_cast<int>(values[8]);
+  sensorDissolvedOxygenVoltage = values[9];
+  sensorTdsRaw = static_cast<int>(values[10]);
+  sensorTdsVoltage = values[11];
+  sensorUvRaw = static_cast<int>(values[12]);
+  sensorUvVoltage = values[13];
+  sensorLightRaw = static_cast<int>(values[14]);
+  sensorLightVoltage = values[15];
+
+  Serial.print(F("Sensor packet seq="));
+  Serial.println(sensorSeq);
 
   if (hasSocketClient())
-    sendStatusBroadcast();
+    sendSensorBroadcast();
 }
 
 void sendBridgeCommand()
@@ -754,8 +829,19 @@ void sendBridgeCommand()
   if (!kUseArduinoBridge)
     return;
 
-  BridgeSerial.printf("D,%d,%d,%d,%d,%d\n", lastSeq, armed ? 1 : 0, estop ? 1 : 0, leftMicros, rightMicros);
-  lastBridgeCommandAt = millis();
+  char line[kMaxBridgeCommandLength];
+  const int length = snprintf(
+    line,
+    sizeof(line),
+    "D,%d,%d,%d,%d,%d\n",
+    lastSeq,
+    armed ? 1 : 0,
+    estop ? 1 : 0,
+    leftMicros,
+    rightMicros);
+
+  if (length > 0 && static_cast<size_t>(length) < sizeof(line) && writeBridgeLine(line))
+    lastBridgeCommandAt = millis();
 }
 
 void sendBridgeProbeCommand()
@@ -763,8 +849,35 @@ void sendBridgeProbeCommand()
   if (!kUseArduinoBridge)
     return;
 
-  BridgeSerial.printf("W,%d,%d,%d\n", lastSeq, probeDirection, probeSpeed);
-  lastProbeBridgeCommandAt = millis();
+  char line[kMaxBridgeCommandLength];
+  const int length = snprintf(
+    line,
+    sizeof(line),
+    "W,%d,%d,%d\n",
+    lastSeq,
+    probeDirection,
+    probeSpeed);
+
+  if (length > 0 && static_cast<size_t>(length) < sizeof(line) && writeBridgeLine(line))
+    lastProbeBridgeCommandAt = millis();
+}
+
+bool writeBridgeLine(const char* line)
+{
+  const size_t length = strlen(line);
+  const size_t written = BridgeSerial.write(
+    reinterpret_cast<const uint8_t*>(line),
+    length);
+  BridgeSerial.flush();
+
+  if (written == length)
+    return true;
+
+  Serial.print(F("Bridge UART short write. Expected="));
+  Serial.print(length);
+  Serial.print(F(" wrote="));
+  Serial.println(written);
+  return false;
 }
 
 void stopProbe(const char* reason)
@@ -858,10 +971,16 @@ void sendStatusBroadcast()
   webSocket.broadcastTXT(message);
 }
 
+void sendSensorBroadcast()
+{
+  String message = buildSensorJson();
+  webSocket.broadcastTXT(message);
+}
+
 String buildStatusJson()
 {
   String message;
-  message.reserve(256);
+  message.reserve(640);
   message += F("{\"type\":\"status\"");
   message += F(",\"connected\":");
   message += (hasSocketClient() ? F("true") : F("false"));
@@ -897,6 +1016,21 @@ String buildStatusJson()
     appendJsonNumber(message, "batteryVoltage", batteryVoltage, 2);
   }
 
+  if (sensorReceived)
+    appendSensorJsonFields(message);
+
+  message += '}';
+  return message;
+}
+
+String buildSensorJson()
+{
+  String message;
+  message.reserve(360);
+  message += F("{\"type\":\"sensor\"");
+  message += F(",\"connected\":");
+  message += (hasSocketClient() ? F("true") : F("false"));
+  appendSensorJsonFields(message);
   message += '}';
   return message;
 }
@@ -993,6 +1127,32 @@ bool parseCsvIntegers(const char* line, int* values, int expectedCount)
       return false;
 
     values[i] = static_cast<int>(parsed);
+
+    if (i == expectedCount - 1)
+      return *endPointer == '\0';
+
+    if (*endPointer != ',')
+      return false;
+
+    cursor = endPointer + 1;
+  }
+
+  return true;
+}
+
+bool parseCsvFloats(const char* line, float* values, int expectedCount)
+{
+  const char* cursor = line;
+
+  for (int i = 0; i < expectedCount; i++)
+  {
+    char* endPointer = nullptr;
+    const float parsed = strtof(cursor, &endPointer);
+
+    if (endPointer == cursor)
+      return false;
+
+    values[i] = parsed;
 
     if (i == expectedCount - 1)
       return *endPointer == '\0';
@@ -1122,6 +1282,51 @@ String escapeJson(const String& value)
     escaped += current;
   }
   return escaped;
+}
+
+void appendSensorJsonFields(String& message)
+{
+  if (!sensorReceived)
+    return;
+
+  const unsigned long sensorAgeMs = millis() - lastSensorAt;
+  message += F(",\"sensorFresh\":");
+  message += sensorAgeMs <= kSensorFreshMs ? F("true") : F("false");
+  message += F(",\"sensorAgeMs\":");
+  message += sensorAgeMs;
+  message += F(",\"sensorSeq\":");
+  message += sensorSeq;
+  message += F(",\"tempRawGpio\":");
+  message += sensorTempRawGpio;
+  message += F(",\"turbidityRaw\":");
+  message += sensorTurbidityRaw;
+  message += F(",\"phRaw\":");
+  message += sensorPhRaw;
+  message += F(",\"dissolvedOxygenRaw\":");
+  message += sensorDissolvedOxygenRaw;
+  message += F(",\"tdsRaw\":");
+  message += sensorTdsRaw;
+  message += F(",\"uvRaw\":");
+  message += sensorUvRaw;
+  message += F(",\"lightRaw\":");
+  message += sensorLightRaw;
+
+  if (!isnan(sensorTemperatureC))
+    appendJsonNumber(message, "temperatureC", sensorTemperatureC, 2);
+  if (!isnan(sensorTurbidityVoltage))
+    appendJsonNumber(message, "turbidityVoltage", sensorTurbidityVoltage, 3);
+  if (!isnan(sensorPhVoltage))
+    appendJsonNumber(message, "phVoltage", sensorPhVoltage, 3);
+  if (!isnan(sensorDistanceCm))
+    appendJsonNumber(message, "distanceCm", sensorDistanceCm, 1);
+  if (!isnan(sensorDissolvedOxygenVoltage))
+    appendJsonNumber(message, "dissolvedOxygenVoltage", sensorDissolvedOxygenVoltage, 3);
+  if (!isnan(sensorTdsVoltage))
+    appendJsonNumber(message, "tdsVoltage", sensorTdsVoltage, 3);
+  if (!isnan(sensorUvVoltage))
+    appendJsonNumber(message, "uvVoltage", sensorUvVoltage, 3);
+  if (!isnan(sensorLightVoltage))
+    appendJsonNumber(message, "lightVoltage", sensorLightVoltage, 3);
 }
 
 void appendJsonNumber(String& json, const char* key, double value, int decimals)
