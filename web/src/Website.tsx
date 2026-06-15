@@ -94,11 +94,7 @@ function MarketingSite({ page, navigate }: { page: Exclude<SitePage, 'control'>;
     <div className="site-shell">
       <header className="site-header">
         <button className="site-brand" type="button" onClick={() => go('home')} aria-label="AQUAScan home">
-          <span className="brand-mark"><Waves size={23} /></span>
-          <span>
-            <strong>AQUAScan</strong>
-            <small>Water intelligence, in motion</small>
-          </span>
+          <img src="/aquascan-logo.png" alt="AQUAScan" />
         </button>
 
         <nav className="site-nav" aria-label="Main navigation">
@@ -137,10 +133,7 @@ function MarketingSite({ page, navigate }: { page: Exclude<SitePage, 'control'>;
       {page === 'about' && <AboutPage navigate={go} />}
 
       <footer className="site-footer">
-        <div className="site-brand footer-brand">
-          <span className="brand-mark"><Waves size={23} /></span>
-          <span><strong>AQUAScan</strong><small>Mobile environmental monitoring</small></span>
-        </div>
+        <div className="site-brand footer-brand"><img src="/aquascan-logo.png" alt="AQUAScan" /></div>
         <p>A semi-autonomous platform connecting navigation, depth-aware sampling, and scientific visualization.</p>
         <button type="button" onClick={() => go('control')}>Operator interface <ArrowRight size={16} /></button>
       </footer>
