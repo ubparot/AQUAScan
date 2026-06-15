@@ -62,6 +62,8 @@ export type DriveStatus = {
   lastSeq: number
   leftMicros: number
   rightMicros: number
+  lastNeutralizeReason?: string
+  neutralizeCount?: number
   probeDirection?: 'raise' | 'lower' | 'stop'
   probeSpeed?: number
   rssi?: number

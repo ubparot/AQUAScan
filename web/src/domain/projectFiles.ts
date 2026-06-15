@@ -1,4 +1,5 @@
 import type { AquaMission, LayerVisibility, LiveSettings } from '../types/aqua'
+import { defaultLiveSettings } from './liveSettings'
 import { cloneMissionForPlanning } from './missionPlanner'
 
 export type AquaProjectFile = {
@@ -58,16 +59,7 @@ export function parseProjectFile(contents: string): AquaProjectFile {
     mission: cloneMissionForPlanning(parsed.mission),
     selectedMetricId: parsed.selectedMetricId || 'temperature',
     layers: parsed.layers || { track: true, points: true, heatmap: true },
-    liveSettings:
-      parsed.liveSettings ||
-      ({
-        host: '192.168.0.187',
-        port: 81,
-        deadzone: 0.08,
-        maxOutput: 1,
-        sendRateHz: 10,
-        timeoutSeconds: 1,
-      } satisfies LiveSettings),
+    liveSettings: parsed.liveSettings || { ...defaultLiveSettings },
   }
 }
 

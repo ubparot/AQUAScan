@@ -2,10 +2,10 @@
   AQUAScan ESP32 boat gateway.
 
   Target board: ESP32 DevKit-style board
-  USB Serial: 19200 debug monitor
+  USB Serial: 115200 debug monitor
   WebSocket: ws://<esp32-ip>:81/
   Direct ESC PWM output: GPIO18 left, GPIO19 right
-  Optional Serial2 bridge: 19200 link to the Arduino Mega ESC bridge
+  Optional Serial2 bridge: 115200 link to the Arduino Mega ESC bridge
 
   WebSocket control messages accepted from the web app and Unity:
     {"type":"hello","client":"AQUAScan Web","version":"0.1.0"}
@@ -45,7 +45,7 @@ namespace
 
   // Fallback access point. Connect the laptop/tablet to this SSID if router join fails.
   const char* kApSsid = "Aquascan";
-  const char* kApPassword = "idkbro";
+  const char* kApPassword = "aquascan";
 
   const uint16_t kWebSocketPort = 81;
   const unsigned long kCommandTimeoutMs = 15000;
@@ -55,8 +55,8 @@ namespace
   const unsigned long kGpsFreshMs = 3000;
   const unsigned long kSensorFreshMs = 3000;
 
-  const long kDebugBaudRate = 19200;
-  const long kBridgeBaudRate = 19200;
+  const long kDebugBaudRate = 115200;
+  const long kBridgeBaudRate = 115200;
   const int kBridgeRxPin = 16;
   const int kBridgeTxPin = 17;
   const bool kUseArduinoBridge = true;
@@ -90,6 +90,9 @@ namespace
   const int kMaxMicros = 2000;
   const size_t kMaxBridgeCommandLength = 64;
   const size_t kMaxBridgeLineLength = 256;
+  const size_t kBridgeReadBudget = 256;
+  const size_t kGpsReadBudget = 128;
+  const size_t kUsbReadBudget = 64;
   const uint8_t kTrackedSocketSlots = 8;
 }
 
@@ -113,6 +116,8 @@ bool estop = false;
 int lastSeq = 0;
 int leftMicros = kNeutralMicros;
 int rightMicros = kNeutralMicros;
+String lastNeutralizeReason = "boot";
+unsigned long neutralizeCount = 0;
 bool bridgeArmed = false;
 bool bridgeEstop = false;
 int bridgeLastSeq = 0;
@@ -277,13 +282,13 @@ void setup()
 
 void loop()
 {
-  const unsigned long now = millis();
-
   webSocket.loop();
   readUsbSerialCommands();
   if (kUseArduinoBridge)
     readBridgeStatus();
   updateTelemetry();
+
+  const unsigned long now = millis();
 
   if (hasSocketClient() && now - lastStatusBroadcastAt >= kStatusBroadcastIntervalMs)
   {
@@ -368,17 +373,27 @@ void handleTextMessage(uint8_t clientNum, const char* payload, size_t length)
   }
 
   Serial.printf("Ignoring unknown WebSocket message type '%s'.\n", type.c_str());
-  neutralize("unknown message");
   sendStatus(clientNum);
 }
 
 void handleDriveMessage(uint8_t clientNum, const String& message)
 {
+  if (findJsonValueStart(message, "seq") < 0 ||
+      findJsonValueStart(message, "armed") < 0 ||
+      findJsonValueStart(message, "estop") < 0 ||
+      findJsonValueStart(message, "left") < 0 ||
+      findJsonValueStart(message, "right") < 0)
+  {
+    Serial.printf("Ignoring malformed drive message from client #%u.\n", clientNum);
+    sendStatus(clientNum);
+    return;
+  }
+
   const int nextSeq = readJsonInt(message, "seq", lastSeq);
-  const bool nextArmed = readJsonBool(message, "armed", false);
-  const bool nextEstop = readJsonBool(message, "estop", false);
-  const int nextLeft = readJsonInt(message, "left", kNeutralMicros);
-  const int nextRight = readJsonInt(message, "right", kNeutralMicros);
+  const bool nextArmed = readJsonBool(message, "armed", armed);
+  const bool nextEstop = readJsonBool(message, "estop", estop);
+  const int nextLeft = readJsonInt(message, "left", leftMicros);
+  const int nextRight = readJsonInt(message, "right", rightMicros);
 
   if (nextLeft < kMinMicros || nextLeft > kMaxMicros || nextRight < kMinMicros || nextRight > kMaxMicros)
   {
@@ -390,6 +405,8 @@ void handleDriveMessage(uint8_t clientNum, const String& message)
   lastSeq = nextSeq;
   estop = nextEstop;
   armed = nextArmed && !estop;
+  if (!armed && !estop)
+    lastNeutralizeReason = "";
   leftMicros = armed ? nextLeft : kNeutralMicros;
   rightMicros = armed ? nextRight : kNeutralMicros;
   lastCommandAt = millis();
@@ -512,9 +529,11 @@ void handleMissionUploadMessage(uint8_t clientNum, const String& type, const Str
 
 void readUsbSerialCommands()
 {
-  while (Serial.available() > 0)
+  size_t processed = 0;
+  while (Serial.available() > 0 && processed < kUsbReadBudget)
   {
     const char incoming = static_cast<char>(Serial.read());
+    processed++;
     if (incoming == '\n' || incoming == '\r')
     {
       usbCommandLine.trim();
@@ -725,9 +744,11 @@ void writeEscPulse(int pin, int channel, int micros)
 
 void readBridgeStatus()
 {
-  while (BridgeSerial.available() > 0)
+  size_t processed = 0;
+  while (BridgeSerial.available() > 0 && processed < kBridgeReadBudget)
   {
     const char incoming = static_cast<char>(BridgeSerial.read());
+    processed++;
 
     if (incoming == '\n' || incoming == '\r')
     {
@@ -745,6 +766,20 @@ void readBridgeStatus()
       continue;
     }
 
+    // Status frame markers are also boundaries. Recover on the next frame if
+    // a newline is lost instead of letting telemetry overflow disarm the boat.
+    if ((incoming == 'S' || incoming == 'P' || incoming == 'R') && bridgeLineLength > 0)
+    {
+      bridgeLine[bridgeLineLength] = '\0';
+      if (bridgeLine[0] == 'S')
+        applyBridgeStatus(bridgeLine);
+      else if (bridgeLine[0] == 'P')
+        applyBridgeProbeStatus(bridgeLine);
+      else if (bridgeLine[0] == 'R')
+        applyBridgeSensorStatus(bridgeLine);
+      bridgeLineLength = 0;
+    }
+
     if (bridgeLineLength < kMaxBridgeLineLength - 1)
     {
       bridgeLine[bridgeLineLength++] = incoming;
@@ -752,7 +787,7 @@ void readBridgeStatus()
     else
     {
       bridgeLineLength = 0;
-      neutralize("bridge line too long");
+      Serial.println(F("Dropped oversized bridge status line."));
     }
   }
 }
@@ -895,6 +930,8 @@ void stopProbe(const char* reason)
 void neutralize(const char* reason)
 {
   armed = false;
+  lastNeutralizeReason = reason;
+  neutralizeCount++;
   leftMicros = kNeutralMicros;
   rightMicros = kNeutralMicros;
   probeDirection = 0;
@@ -920,8 +957,12 @@ void updateTelemetry()
 void updateGps()
 {
 #if AQUASCAN_HAS_TINYGPS
-  while (GpsSerial.available() > 0)
+  size_t processed = 0;
+  while (GpsSerial.available() > 0 && processed < kGpsReadBudget)
+  {
     gps.encode(static_cast<char>(GpsSerial.read()));
+    processed++;
+  }
 
   if (gps.location.isValid() && gps.location.isUpdated())
   {
@@ -994,6 +1035,10 @@ String buildStatusJson()
   message += leftMicros;
   message += F(",\"right\":");
   message += rightMicros;
+  message += F(",\"lastNeutralizeReason\":\"");
+  message += escapeJson(lastNeutralizeReason);
+  message += F("\",\"neutralizeCount\":");
+  message += neutralizeCount;
   message += F(",\"probeDirection\":\"");
   message += probeDirection > 0 ? F("lower") : probeDirection < 0 ? F("raise") : F("stop");
   message += F("\",\"probeSpeed\":");
@@ -1341,9 +1386,7 @@ void startNetwork()
 {
   WiFi.persistent(false);
   WiFi.setSleep(false);
-
-  if (!connectToRouter())
-    startFallbackAccessPoint();
+  startFallbackAccessPoint();
 }
 
 bool connectToRouter()

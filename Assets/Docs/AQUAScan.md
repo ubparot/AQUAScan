@@ -112,17 +112,19 @@ ESP32:
 - uses hardware UART instead of software serial
 
 Arduino Mega:
-- left ESC signal pin: `9`
+- left ESC signal pin: `8`
 - right ESC signal pin: `10`
 - USB debug stays on `Serial` at `115200`
-- ESP32 bridge uses `Serial2` at `19200`
+- ESP32 bridge uses `Serial2` at `115200`
 - Mega `RX2` = pin `17`
 - Mega `TX2` = pin `16`
 - wire ESP32 `TX2` / GPIO `17` -> Mega `RX2` (`17`)
 - wire ESP32 `RX2` / GPIO `16` <- Mega `TX2` (`16`)
+- keep this full-duplex `Serial2` control link separate from the probe's half-duplex RS-485 bus on Mega `Serial3`
 
 Common requirements:
 - shared ground between ESP32, Arduino, and ESC signal ground
+- use a level shifter or divider from the Mega's 5 V `TX2` to the ESP32's 3.3 V `RX2`
 - do not power the ESP32 directly from an ESC BEC without confirming voltage regulation
 - keep motors disconnected for first bring-up and pulse verification
 

@@ -30,7 +30,7 @@
 
 namespace
 {
-  const uint8_t kLeftEscPin = 9;
+  const uint8_t kLeftEscPin = 8;
   const uint8_t kRightEscPin = 10;
 
   const unsigned long kBaudRate = 19200;

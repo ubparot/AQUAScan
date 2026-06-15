@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyRadialDeadzone, buildDriveCommand, mixArcade, neutralMicros, toMicros } from './drive'
 import { geoToLocal, localToGeo } from './geo'
 import { getMetricDescriptor } from './metrics'
+import { defaultLiveSettings, espAccessPointHost, espWebSocketPort } from './liveSettings'
 import { loadFromCsv, loadFromJson, parseMission } from './missionLoader'
 import { deleteWaypoint, exportMissionPlanCsv, insertWaypointAfter, moveWaypoint, updateWaypoint, validateMissionPlan } from './missionPlanner'
 import { exportMissionRoutePayload, nearestSampleIndex, normalizedTimeForSample, summarizeMetricRoute, summarizeMissionRoute } from './missionTools'
@@ -151,6 +152,15 @@ describe('ported math', () => {
       estop: false,
     })
     expect(preflightReady(checks)).toBe(true)
+  })
+
+  it('uses the ESP access-point route for default project live settings', () => {
+    const mission = parseMission(csv, 'demo-mission.csv')
+    const parsed = parseProjectFile(JSON.stringify({ version: 1, mission }))
+
+    expect(defaultLiveSettings.host).toBe(espAccessPointHost)
+    expect(defaultLiveSettings.port).toBe(espWebSocketPort)
+    expect(parsed.liveSettings).toEqual(defaultLiveSettings)
   })
 
   it('builds mission upload protocol messages', () => {

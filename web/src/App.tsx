@@ -33,6 +33,7 @@ import { BoatScene } from './components/BoatScene'
 import { Joystick } from './components/Joystick'
 import { predictWaterQuality } from './domain/ai'
 import { localToGeo, offsetToLocal } from './domain/geo'
+import { defaultLiveSettings } from './domain/liveSettings'
 import { formatMetricValue, getMetricDescriptor, gradientCss, listMissionMetrics, metricValue } from './domain/metrics'
 import { loadMissionFromFile, loadMissionFromUrl } from './domain/missionLoader'
 import {
@@ -57,7 +58,7 @@ import { defaultResearchModelMetadataUrl, loadResearchModelBackend, loadingResea
 import { analyzeResearchPhenomena, type ResearchPhenomenonAnalysis } from './domain/researchPhenomena'
 import { useLiveBoat } from './hooks/useLiveBoat'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
-import type { AquaMission, DriveStatus, LayerVisibility, LiveSettings, TabId, TelemetryHealth } from './types/aqua'
+import type { AquaMission, DriveStatus, LayerVisibility, TabId, TelemetryHealth } from './types/aqua'
 
 type RunState = 'draft' | 'prepared' | 'armed' | 'running' | 'paused' | 'completed' | 'aborted'
 
@@ -75,15 +76,6 @@ type OperatorAlert = {
   severity: OperatorAlertSeverity
   title: string
   detail: string
-}
-
-const defaultSettings: LiveSettings = {
-  host: '192.168.0.187',
-  port: 81,
-  deadzone: 0.08,
-  maxOutput: 1,
-  sendRateHz: 10,
-  timeoutSeconds: 1,
 }
 
 const defaultLayers: LayerVisibility = {
@@ -108,7 +100,7 @@ function App() {
   const [isPlaying, setIsPlaying] = useState(true)
   const [activeTab, setActiveTab] = useState<TabId>('sensors')
   const [setupStep, setSetupStep] = useState(0)
-  const [liveMode, setLiveMode] = useState(false)
+  const [liveMode, setLiveMode] = useState(true)
   const [simulatorEnabled, setSimulatorEnabled] = useLocalStorageState('aquascan.simulatorEnabled', false)
   const [interfaceMode, setInterfaceMode] = useLocalStorageState<'simple' | 'advanced'>('aquascan.interfaceMode', 'simple')
   const [joystick, setJoystick] = useState<[number, number]>([0, 0])
@@ -117,7 +109,7 @@ function App() {
   const [timelineCollapsed, setTimelineCollapsed] = useState(false)
   const [theme, setTheme] = useLocalStorageState<'light' | 'dark'>('aquascan.theme', 'light')
   const [layers, setLayers] = useLocalStorageState('aquascan.layers', defaultLayers)
-  const [settings, setSettings] = useLocalStorageState('aquascan.liveSettings', defaultSettings)
+  const [settings, setSettings] = useLocalStorageState('aquascan.liveSettings', defaultLiveSettings)
   const [savedProjects, setSavedProjects] = useLocalStorageState<AquaProjectFile[]>('aquascan.projects', [])
   const [controlPanelWidth, setControlPanelWidth] = useLocalStorageState('aquascan.controlPanelWidth', 430)
   const [infoPanelWidth, setInfoPanelWidth] = useLocalStorageState('aquascan.infoPanelWidth', 340)
@@ -1322,6 +1314,36 @@ function App() {
                 </div>
                 <p className="status-copy">Raw and voltage readings are shown directly from the probe stream. Calibrate them before treating them as pH, DO, TDS, turbidity, UV, or light measurements.</p>
               </article>
+              <article className="run-panel">
+                <div className="mission-tools-header">
+                  <div>
+                    <p className="eyebrow">Collected RS-485 data</p>
+                    <h3>RS-485 averages</h3>
+                  </div>
+                  <button className="secondary-button compact-button" type="button" disabled={live.sensorAverages.packetCount === 0} onClick={live.resetSensorAverages}>
+                    <RotateCcw size={14} />
+                    Reset averages
+                  </button>
+                </div>
+                <div className="telemetry-grid">
+                  <Readout label="Packets averaged" value={String(live.sensorAverages.packetCount)} />
+                  <Readout label="Average temperature" value={formatLiveSensorValue(live.sensorAverages.values.temperatureC, 2, 'deg C')} />
+                  <Readout label="Average distance" value={formatLiveSensorValue(live.sensorAverages.values.distanceCm, 1, 'cm')} />
+                  <Readout label="Average turbidity voltage" value={formatLiveSensorValue(live.sensorAverages.values.turbidityVoltage, 3, 'V')} />
+                  <Readout label="Average turbidity raw" value={formatLiveSensorValue(live.sensorAverages.values.turbidityRaw, 1)} />
+                  <Readout label="Average pH voltage" value={formatLiveSensorValue(live.sensorAverages.values.phVoltage, 3, 'V')} />
+                  <Readout label="Average pH raw" value={formatLiveSensorValue(live.sensorAverages.values.phRaw, 1)} />
+                  <Readout label="Average DO voltage" value={formatLiveSensorValue(live.sensorAverages.values.dissolvedOxygenVoltage, 3, 'V')} />
+                  <Readout label="Average DO raw" value={formatLiveSensorValue(live.sensorAverages.values.dissolvedOxygenRaw, 1)} />
+                  <Readout label="Average TDS voltage" value={formatLiveSensorValue(live.sensorAverages.values.tdsVoltage, 3, 'V')} />
+                  <Readout label="Average TDS raw" value={formatLiveSensorValue(live.sensorAverages.values.tdsRaw, 1)} />
+                  <Readout label="Average UV voltage" value={formatLiveSensorValue(live.sensorAverages.values.uvVoltage, 3, 'V')} />
+                  <Readout label="Average UV raw" value={formatLiveSensorValue(live.sensorAverages.values.uvRaw, 1)} />
+                  <Readout label="Average light voltage" value={formatLiveSensorValue(live.sensorAverages.values.lightVoltage, 3, 'V')} />
+                  <Readout label="Average light raw" value={formatLiveSensorValue(live.sensorAverages.values.lightRaw, 1)} />
+                </div>
+                <p className="status-copy">Each unique sensor sequence is counted once. Reset averages before placing the probe into a new sample or calibration solution.</p>
+              </article>
               <label className="field-stack">
                 <span>Metric</span>
                 <select value={metricId} onChange={(event) => setMetricId(event.target.value)}>
@@ -1946,6 +1968,15 @@ function buildOperatorAlerts({
       severity: 'notice',
       title: 'Waiting for telemetry',
       detail: 'Connection is in progress and status packets have not stabilized yet.',
+    })
+  }
+
+  if (liveMode && status.lastNeutralizeReason && status.lastNeutralizeReason !== 'boot') {
+    alerts.push({
+      id: 'safety-neutralized',
+      severity: 'warning',
+      title: 'Boat was safety-neutralized',
+      detail: `${status.lastNeutralizeReason} (event ${status.neutralizeCount ?? 'unknown'}). Disarm and inspect the link before rearming.`,
     })
   }
 

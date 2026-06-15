@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { buildDriveCommand, neutralMicros } from '../domain/drive'
+import { addSensorPacket, calculateSensorAverages, createSensorAverageAccumulator } from '../domain/sensorAverages'
 import type { AquaMission, AquaSample, DriveCommand, DriveStatus, LiveSettings, TelemetryHealth, TelemetrySnapshot } from '../types/aqua'
 
 type SocketState = 'idle' | 'connecting' | 'connected' | 'error'
@@ -48,6 +49,7 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
   const [history, setHistory] = useState<TelemetrySnapshot[]>([])
   const [armed, setArmed] = useState(false)
   const [estop, setEstop] = useState(false)
+  const [sensorAverages, setSensorAverages] = useState(() => calculateSensorAverages(createSensorAverageAccumulator()))
   const [lastCommand, setLastCommand] = useState<DriveCommand>(() =>
     buildDriveCommand(0, [0, 0], settings, false, false),
   )
@@ -60,6 +62,20 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
   const uiFlushTimerRef = useRef<number | undefined>(undefined)
   const simProgressRef = useRef(0)
   const simLastTickRef = useRef(0)
+  const sensorAverageAccumulatorRef = useRef(createSensorAverageAccumulator())
+
+  const recordSensorPacket = useCallback((message: BoatSocketMessage) => {
+    const next = addSensorPacket(sensorAverageAccumulatorRef.current, message)
+    if (next === sensorAverageAccumulatorRef.current) return
+    sensorAverageAccumulatorRef.current = next
+    setSensorAverages(calculateSensorAverages(next))
+  }, [])
+
+  const resetSensorAverages = useCallback(() => {
+    const next = createSensorAverageAccumulator(statusRef.current.sensorSeq)
+    sensorAverageAccumulatorRef.current = next
+    setSensorAverages(calculateSensorAverages(next))
+  }, [])
 
   const publishPendingStatus = useCallback(() => {
     const pending = pendingStatusRef.current
@@ -76,6 +92,8 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
       { ...pending.status, receivedAtMs: pending.receivedAtMs, packetAgeMs: 0 },
       ...previous.slice(0, telemetryHistoryLimit - 1),
     ])
+    if (pending.status.lastSeq >= seqRef.current)
+      setArmed(Boolean(pending.status.armed))
     setEstop(Boolean(pending.status.estop))
   }, [])
 
@@ -153,6 +171,7 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
       try {
         const message = JSON.parse(String(event.data)) as BoatSocketMessage
         if (message.type !== 'status' && message.type !== 'sensor') return
+        recordSensorPacket(message)
         const receivedAtMs = Date.now()
         lastSeenRef.current = receivedAtMs
         const previousStatus = pendingStatusRef.current?.status ?? statusRef.current
@@ -170,6 +189,8 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
             lastSeq: message.lastSeq ?? 0,
             leftMicros: message.left ?? neutralMicros,
             rightMicros: message.right ?? neutralMicros,
+            lastNeutralizeReason: message.lastNeutralizeReason,
+            neutralizeCount: message.neutralizeCount,
             probeDirection: message.probeDirection,
             probeSpeed: message.probeSpeed,
             rssi: message.rssi,
@@ -199,12 +220,30 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
         setPacketAgeMs(undefined)
       }
     })
-  }, [queueStatusForUi, settings.host, settings.port, simulator?.enabled])
+  }, [queueStatusForUi, recordSensorPacket, settings.host, settings.port, simulator?.enabled])
 
   const toggleArm = useCallback(() => {
     if (!liveMode || socketState !== 'connected' || estop) return
-    setArmed((value) => !value)
-  }, [estop, liveMode, socketState])
+    setArmed((value) => {
+      const nextArmed = !value
+      const command = buildDriveCommand(seqRef.current + 1, nextArmed ? joystick : [0, 0], settings, nextArmed, false)
+      seqRef.current = command.seq
+      setLastCommand(command)
+      if (!simulator?.enabled) {
+        sendJson({
+          type: 'drive',
+          seq: command.seq,
+          armed: command.armed,
+          estop: command.estop,
+          x: command.joystickX,
+          y: command.joystickY,
+          left: command.leftMicros,
+          right: command.rightMicros,
+        })
+      }
+      return nextArmed
+    })
+  }, [estop, joystick, liveMode, sendJson, settings, simulator?.enabled, socketState])
 
   const triggerEstop = useCallback(() => {
     const nextSeq = seqRef.current + 1
@@ -257,7 +296,8 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     const timer = window.setInterval(() => {
       const connected = socketRef.current?.readyState === WebSocket.OPEN
       if (!simulator?.enabled && !connected) return
-      if (!simulator?.enabled && lastSeenRef.current > 0 && Date.now() - lastSeenRef.current > settings.timeoutSeconds * 1000) {
+      const timeoutMs = Math.max(3000, settings.timeoutSeconds * 1000)
+      if (!simulator?.enabled && lastSeenRef.current > 0 && Date.now() - lastSeenRef.current > timeoutMs) {
         disconnect('Timed out')
         return
       }
@@ -370,6 +410,8 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
     triggerEstop,
     resetEstop,
     sendProbeCommand,
+    sensorAverages,
+    resetSensorAverages,
   }
 }
 

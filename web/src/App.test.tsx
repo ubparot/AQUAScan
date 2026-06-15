@@ -146,6 +146,8 @@ describe('App dashboard', () => {
     render(<App />)
     await waitFor(() => expect(screen.getByText('Boat drive')).toBeInTheDocument())
     expect(screen.getByText('Driving enabled')).toBeInTheDocument()
+    expect(screen.getByLabelText(/driving enabled/i)).toBeChecked()
+    expect(screen.getByText('Live mode ready')).toBeInTheDocument()
     expect(screen.getByText('Advanced')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /advanced/i }))

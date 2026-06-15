@@ -1,6 +1,17 @@
 # AQUAScan Web
 
-Frontend-only local control dashboard for AQUAScan.
+Public-facing AQUAScan website and frontend-only local control dashboard.
+
+## Pages
+
+- `/` - AQUAScan overview and primary landing page
+- `/technology` - vessel, navigation, sensing, and data-system overview
+- `/impact` - environmental-monitoring value and applications
+- `/about` - project purpose and design principles
+- `/control` - existing live-control and mission dashboard
+
+The included `vercel.json` rewrites public routes to the Vite application when
+the site is deployed on Vercel.
 
 ## Run
 
@@ -9,7 +20,21 @@ npm install
 npm run dev
 ```
 
-Open the local Vite URL over HTTP. Direct live control uses `ws://<boat-host>:81/`, so the operator device must be able to reach the boat network.
+Vite listens on all network interfaces. On another device connected to the same
+network, open the `Network` URL printed by Vite, such as:
+
+```text
+http://192.168.0.90:5173/
+```
+
+If Windows prompts for firewall access, allow Node.js on private networks. If it
+does not prompt and the page cannot be reached, open port 5173 for private
+networks in Windows Defender Firewall.
+
+The dashboard starts in hardware/live mode and defaults to the ESP access-point
+route at `ws://192.168.4.1:81/`. Loading the website and connecting to the boat
+are separate network connections. The operator device must also have a route to
+the ESP access point before live control will work.
 
 ## Boat Model Conversion
 

@@ -2,8 +2,8 @@
   AQUAScan Arduino boat ESC bridge.
 
   Target board: Arduino Mega 2560
-  USB Serial: 19200 debug monitor
-  Serial2: 19200 link to the ESP32 boat gateway
+  USB Serial: 115200 debug monitor
+  Serial2: 115200 link to the ESP32 boat gateway
   Serial3: 19200 receive-only RS-485 probe link
 
   ESP32 -> Arduino:
@@ -26,15 +26,15 @@
 
 namespace
 {
-  const uint8_t kLeftEscPin = 9;
+  const uint8_t kLeftEscPin = 8;
   const uint8_t kRightEscPin = 10;
   const uint8_t kWinchLowerPin = 7;
   const uint8_t kWinchRaisePin = 6;
   const uint8_t kRs485DirPin = 45;
 
-  const unsigned long kBridgeBaudRate = 19200;
+  const unsigned long kBridgeBaudRate = 115200;
   const unsigned long kRs485BaudRate = 19200;
-  const unsigned long kDebugBaudRate = 19200;
+  const unsigned long kDebugBaudRate = 115200;
   const unsigned long kStartupNeutralDelayMs = 5000;
   const unsigned long kCommandTimeoutMs = 3500;
   const unsigned long kStatusIntervalMs = 1000;
@@ -67,6 +67,7 @@ int winchSpeed = 0;
 unsigned long lastCommandAt = 0;
 unsigned long lastWinchCommandAt = 0;
 unsigned long lastStatusAt = 0;
+unsigned long lastDriveLogAt = 0;
 unsigned long lastRs485DiagnosticAt = 0;
 unsigned long receivedRs485ByteCount = 0;
 unsigned long receivedRs485LineCount = 0;
@@ -117,11 +118,11 @@ void setup()
 
 void loop()
 {
-  const unsigned long now = millis();
-
   readBridgeCommands();
   readRs485Probe();
   printRs485Diagnostics();
+
+  const unsigned long now = millis();
 
   if (armed && lastCommandAt > 0 && now - lastCommandAt > kCommandTimeoutMs)
     neutralize("command timeout", false);
@@ -179,6 +180,9 @@ void readRs485Probe()
 
 void printRs485Diagnostics()
 {
+  if (armed)
+    return;
+
   const unsigned long now = millis();
   if (now - lastRs485DiagnosticAt < kRs485DiagnosticIntervalMs)
     return;
@@ -195,10 +199,13 @@ void printRs485Diagnostics()
 void forwardRs485ProbeLine(const char* line)
 {
   receivedRs485LineCount++;
-  Serial.print(F("RS485 LINE "));
-  Serial.print(receivedRs485LineCount);
-  Serial.print(F(": "));
-  Serial.println(line);
+  if (!armed)
+  {
+    Serial.print(F("RS485 LINE "));
+    Serial.print(receivedRs485LineCount);
+    Serial.print(F(": "));
+    Serial.println(line);
+  }
 
   const bool prefixedProbeLine = line[0] == 'P' && line[1] == ',';
   const bool bareSensorCsv = line[0] >= '0' && line[0] <= '9';
@@ -212,9 +219,12 @@ void forwardRs485ProbeLine(const char* line)
   Serial2.print(F("R,"));
   Serial2.println(line);
 
-  Serial.print(F("Forwarded probe line "));
-  Serial.print(receivedProbeLineCount);
-  Serial.println(F(" to boat ESP32."));
+  if (!armed)
+  {
+    Serial.print(F("Forwarded probe line "));
+    Serial.print(receivedProbeLineCount);
+    Serial.println(F(" to boat ESP32."));
+  }
 }
 
 void readBridgeCommands()
@@ -238,6 +248,15 @@ void readBridgeCommands()
 
     if (static_cast<uint8_t>(incoming) < 32)
       continue;
+
+    // A new command marker also acts as a frame boundary. This lets the bridge
+    // recover on the next command if a newline is lost under heavy UART load.
+    if ((incoming == 'D' || incoming == 'W') && serialLineLength > 0)
+    {
+      serialLine[serialLineLength] = '\0';
+      handleCommand(serialLine);
+      serialLineLength = 0;
+    }
 
     if (serialLineLength < kMaxLineLength - 1)
     {
@@ -298,18 +317,18 @@ void handleDriveCommand(const char* line)
   lastCommandAt = millis();
 
   applyOutputs(leftMicros, rightMicros);
-  sendStatus();
 
-  Serial.print(F("Drive seq="));
-  Serial.print(lastSeq);
-  Serial.print(F(" armed="));
-  Serial.print(armed ? 1 : 0);
-  Serial.print(F(" estop="));
-  Serial.print(estop ? 1 : 0);
-  Serial.print(F(" left="));
-  Serial.print(leftMicros);
-  Serial.print(F(" right="));
-  Serial.println(rightMicros);
+  const unsigned long now = millis();
+  if (armed && now - lastDriveLogAt >= 1000)
+  {
+    lastDriveLogAt = now;
+    Serial.print(F("Drive seq="));
+    Serial.print(lastSeq);
+    Serial.print(F(" armed=1 estop=0 left="));
+    Serial.print(leftMicros);
+    Serial.print(F(" right="));
+    Serial.println(rightMicros);
+  }
 }
 
 void handleWinchCommand(const char* line)
@@ -326,17 +345,20 @@ void handleWinchCommand(const char* line)
   lastSeq = values[0];
   winchDirection = constrain(values[1], -1, 1);
   winchSpeed = winchDirection == 0 ? 0 : clampWinchSpeed(values[2]);
-  lastWinchCommandAt = millis();
+  lastWinchCommandAt = winchDirection == 0 ? 0 : millis();
 
   applyWinch(winchDirection, winchSpeed);
   sendWinchStatus();
 
-  Serial.print(F("Winch seq="));
-  Serial.print(lastSeq);
-  Serial.print(F(" direction="));
-  Serial.print(winchDirection);
-  Serial.print(F(" speed="));
-  Serial.println(winchSpeed);
+  if (!armed)
+  {
+    Serial.print(F("Winch seq="));
+    Serial.print(lastSeq);
+    Serial.print(F(" direction="));
+    Serial.print(winchDirection);
+    Serial.print(F(" speed="));
+    Serial.println(winchSpeed);
+  }
 }
 
 void applyOutputs(int left, int right)
