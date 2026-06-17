@@ -10,12 +10,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "convert:boat": "node scripts/convert-boat.mjs",
+    "firebase:setup": "node scripts/setup-firebase-web-app.mjs",
+    "firebase:deploy:firestore": "npx firebase-tools deploy --only firestore --project aquascan-11526",
     "preview": "vite preview"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "clsx": "^2.1.1",
+    "firebase": "^12.15.0",
     "lucide-react": "^1.14.0",
     "onnxruntime-web": "^1.25.1",
     "papaparse": "^5.5.3",

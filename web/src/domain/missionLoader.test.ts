@@ -126,7 +126,7 @@ describe('ported math', () => {
       mission,
       selectedMetricId: 'temperature',
       layers: { track: true, points: true, heatmap: false },
-      liveSettings: { host: '192.168.0.67', port: 81, deadzone: 0.08, maxOutput: 1, sendRateHz: 20, timeoutSeconds: 1 },
+      liveSettings: { host: '192.168.0.67', port: 81, relayUrl: '', deadzone: 0.08, maxOutput: 1, sendRateHz: 20, timeoutSeconds: 1 },
     })
     const parsed = parseProjectFile(serializeProjectFile(project))
     expect(parsed.name).toBe('Dock Test')

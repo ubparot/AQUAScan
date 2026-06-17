@@ -1,0 +1,14 @@
+{
+  "name": "aquascan-relay",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "wrangler": "^4.54.0"
+  }
+}

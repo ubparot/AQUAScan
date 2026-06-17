@@ -1,0 +1,15 @@
+name = "aquascan-relay"
+main = "src/index.ts"
+compatibility_date = "2026-06-17"
+
+[durable_objects]
+bindings = [
+  { name = "AQUASCAN_RELAY", class_name = "AquaScanRelay" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AquaScanRelay"]
+
+[vars]
+FIREBASE_PROJECT_ID = "aquascan-11526"

@@ -3,7 +3,8 @@
 
   Target board: ESP32 DevKit-style board
   USB Serial: 115200 debug monitor
-  WebSocket: ws://<esp32-ip>:81/
+  Local WebSocket fallback: ws://<esp32-ip>:81/
+  Cloud relay WebSocket: wss://aquascan-relay.rocksparrot.workers.dev/boat
   Direct ESC PWM output: GPIO18 left, GPIO19 right
   Optional Serial2 bridge: 115200 link to the Arduino Mega ESC bridge
 
@@ -17,6 +18,7 @@
 */
 
 #include <WiFi.h>
+#include <WebSocketsClient.h>
 #include <WebSocketsServer.h>
 #include <ctype.h>
 #include <math.h>
@@ -48,7 +50,7 @@ namespace
   const char* kApPassword = "aquascan";
 
   const uint16_t kWebSocketPort = 81;
-  const unsigned long kCommandTimeoutMs = 15000;
+  const unsigned long kCommandTimeoutMs = 3500;
   const unsigned long kBridgeKeepaliveIntervalMs = 100;
   const unsigned long kStatusBroadcastIntervalMs = 250;
   const unsigned long kBatterySampleIntervalMs = 1000;
@@ -94,9 +96,18 @@ namespace
   const size_t kGpsReadBudget = 128;
   const size_t kUsbReadBudget = 64;
   const uint8_t kTrackedSocketSlots = 8;
+  const uint8_t kRelayClientNum = 255;
+
+  const bool kUseCloudRelay = true;
+  const char* kRelayHost = "aquascan-relay.rocksparrot.workers.dev";
+  const uint16_t kRelayPort = 443;
+  const char* kRelayPath = "/boat";
+  const char* kRelayDeviceToken = "HmCZ8nlbq0EFrpXGSVaORkP2J5isDWdvTj73BuUf6NMKxoAt";
+  const unsigned long kRelayReconnectIntervalMs = 5000;
 }
 
 HardwareSerial BridgeSerial(2);
+WebSocketsClient relaySocket;
 WebSocketsServer webSocket(kWebSocketPort);
 
 #if AQUASCAN_HAS_TINYGPS
@@ -110,6 +121,8 @@ String usbCommandLine;
 
 bool socketSlots[kTrackedSocketSlots] = { false };
 uint8_t connectedClientCount = 0;
+bool relayConnected = false;
+bool relayAuthenticated = false;
 
 bool armed = false;
 bool estop = false;
@@ -174,7 +187,9 @@ int uploadReceivedWaypoints = 0;
 void startNetwork();
 bool connectToRouter();
 void startFallbackAccessPoint();
+void startRelayClient();
 void handleSocketEvent(uint8_t clientNum, WStype_t type, uint8_t* payload, size_t length);
+void handleRelayEvent(WStype_t type, uint8_t* payload, size_t length);
 void handleTextMessage(uint8_t clientNum, const char* payload, size_t length);
 void handleDriveMessage(uint8_t clientNum, const String& message);
 void handleEstopMessage(uint8_t clientNum, const String& message);
@@ -206,7 +221,9 @@ String buildStatusJson();
 String buildSensorJson();
 void sendMissionAck(uint8_t clientNum, const String& missionId, int seq, bool accepted, const String& text);
 void sendMissionProgress(uint8_t clientNum);
+bool sendRelayText(const String& message);
 bool hasSocketClient();
+bool hasControlClient();
 void markSocketConnected(uint8_t clientNum);
 void markSocketDisconnected(uint8_t clientNum);
 bool parseCsvIntegers(const char* line, int* values, int expectedCount);
@@ -267,6 +284,7 @@ void setup()
   }
 
   startNetwork();
+  startRelayClient();
   Serial.println(F("BOOT: Network setup complete."));
   Serial.flush();
 
@@ -282,6 +300,9 @@ void setup()
 
 void loop()
 {
+  if (kUseCloudRelay && WiFi.status() == WL_CONNECTED)
+    relaySocket.loop();
+
   webSocket.loop();
   readUsbSerialCommands();
   if (kUseArduinoBridge)
@@ -290,13 +311,13 @@ void loop()
 
   const unsigned long now = millis();
 
-  if (hasSocketClient() && now - lastStatusBroadcastAt >= kStatusBroadcastIntervalMs)
+  if (hasControlClient() && now - lastStatusBroadcastAt >= kStatusBroadcastIntervalMs)
   {
     sendStatusBroadcast();
     lastStatusBroadcastAt = now;
   }
 
-  if (kUseArduinoBridge && hasSocketClient() && lastCommandAt > 0 && now - lastBridgeCommandAt >= kBridgeKeepaliveIntervalMs)
+  if (kUseArduinoBridge && hasControlClient() && lastCommandAt > 0 && now - lastBridgeCommandAt >= kBridgeKeepaliveIntervalMs)
     sendBridgeCommand();
 
   if (kUseArduinoBridge && probeDirection != 0 && now - lastProbeBridgeCommandAt >= kBridgeKeepaliveIntervalMs)
@@ -322,13 +343,60 @@ void handleSocketEvent(uint8_t clientNum, WStype_t type, uint8_t* payload, size_
     case WStype_DISCONNECTED:
       markSocketDisconnected(clientNum);
       Serial.printf("WebSocket client disconnected: #%u\n", clientNum);
-      if (!hasSocketClient())
+      if (!hasControlClient())
         neutralize("all clients disconnected");
       break;
 
     case WStype_TEXT:
       handleTextMessage(clientNum, reinterpret_cast<const char*>(payload), length);
       break;
+
+    default:
+      break;
+  }
+}
+
+void handleRelayEvent(WStype_t type, uint8_t* payload, size_t length)
+{
+  switch (type)
+  {
+    case WStype_CONNECTED:
+      relayConnected = true;
+      relayAuthenticated = false;
+      Serial.println(F("Cloud relay connected. Authenticating boat."));
+      sendRelayText(String(F("{\"type\":\"boat_auth\",\"token\":\"")) + escapeJson(kRelayDeviceToken) + F("\"}"));
+      break;
+
+    case WStype_DISCONNECTED:
+      relayConnected = false;
+      relayAuthenticated = false;
+      Serial.println(F("Cloud relay disconnected."));
+      if (!hasControlClient())
+        neutralize("relay disconnected");
+      break;
+
+    case WStype_TEXT:
+    {
+      const String message = socketPayloadToString(reinterpret_cast<const char*>(payload), length);
+      const String typeName = readJsonString(message, "type", "");
+      if (!relayAuthenticated && typeName == "hello")
+        return;
+      if (typeName == "auth_ok")
+      {
+        relayAuthenticated = true;
+        Serial.println(F("Cloud relay boat authentication accepted."));
+        sendStatus(kRelayClientNum);
+        return;
+      }
+      if (typeName == "error")
+      {
+        Serial.print(F("Cloud relay error: "));
+        Serial.println(message);
+        return;
+      }
+      handleTextMessage(kRelayClientNum, reinterpret_cast<const char*>(payload), length);
+      break;
+    }
 
     default:
       break;
@@ -357,6 +425,13 @@ void handleTextMessage(uint8_t clientNum, const char* payload, size_t length)
   if (type == "estop")
   {
     handleEstopMessage(clientNum, message);
+    return;
+  }
+
+  if (type == "neutralize")
+  {
+    const String reason = readJsonString(message, "reason", "remote neutralize");
+    neutralize(reason.c_str());
     return;
   }
 
@@ -855,7 +930,7 @@ void applyBridgeSensorStatus(const char* line)
   Serial.print(F("Sensor packet seq="));
   Serial.println(sensorSeq);
 
-  if (hasSocketClient())
+  if (hasControlClient())
     sendSensorBroadcast();
 }
 
@@ -921,7 +996,7 @@ void stopProbe(const char* reason)
   probeSpeed = 0;
   lastProbeCommandAt = 0;
   sendBridgeProbeCommand();
-  if (hasSocketClient())
+  if (hasControlClient())
     sendStatusBroadcast();
 
   Serial.printf("Probe stopped: %s\n", reason);
@@ -942,7 +1017,7 @@ void neutralize(const char* reason)
   applyEscOutputs(leftMicros, rightMicros);
   sendBridgeCommand();
   sendBridgeProbeCommand();
-  if (hasSocketClient())
+  if (hasControlClient())
     sendStatusBroadcast();
 
   Serial.printf("Neutralized: %s\n", reason);
@@ -1003,6 +1078,11 @@ void updateBattery()
 void sendStatus(uint8_t clientNum)
 {
   String message = buildStatusJson();
+  if (clientNum == kRelayClientNum)
+  {
+    sendRelayText(message);
+    return;
+  }
   webSocket.sendTXT(clientNum, message);
 }
 
@@ -1010,12 +1090,14 @@ void sendStatusBroadcast()
 {
   String message = buildStatusJson();
   webSocket.broadcastTXT(message);
+  sendRelayText(message);
 }
 
 void sendSensorBroadcast()
 {
   String message = buildSensorJson();
   webSocket.broadcastTXT(message);
+  sendRelayText(message);
 }
 
 String buildStatusJson()
@@ -1024,7 +1106,7 @@ String buildStatusJson()
   message.reserve(640);
   message += F("{\"type\":\"status\"");
   message += F(",\"connected\":");
-  message += (hasSocketClient() ? F("true") : F("false"));
+  message += (hasControlClient() ? F("true") : F("false"));
   message += F(",\"armed\":");
   message += (armed ? F("true") : F("false"));
   message += F(",\"estop\":");
@@ -1074,7 +1156,7 @@ String buildSensorJson()
   message.reserve(360);
   message += F("{\"type\":\"sensor\"");
   message += F(",\"connected\":");
-  message += (hasSocketClient() ? F("true") : F("false"));
+  message += (hasControlClient() ? F("true") : F("false"));
   appendSensorJsonFields(message);
   message += '}';
   return message;
@@ -1093,6 +1175,11 @@ void sendMissionAck(uint8_t clientNum, const String& missionId, int seq, bool ac
   message += F(",\"message\":\"");
   message += escapeJson(text);
   message += F("\"}");
+  if (clientNum == kRelayClientNum)
+  {
+    sendRelayText(message);
+    return;
+  }
   webSocket.sendTXT(clientNum, message);
 }
 
@@ -1116,12 +1203,31 @@ void sendMissionProgress(uint8_t clientNum)
     message += F("\"");
   }
   message += '}';
+  if (clientNum == kRelayClientNum)
+  {
+    sendRelayText(message);
+    return;
+  }
   webSocket.sendTXT(clientNum, message);
+}
+
+bool sendRelayText(const String& message)
+{
+  if (!kUseCloudRelay || !relayConnected)
+    return false;
+
+  String mutableMessage = message;
+  return relaySocket.sendTXT(mutableMessage);
 }
 
 bool hasSocketClient()
 {
   return connectedClientCount > 0;
+}
+
+bool hasControlClient()
+{
+  return hasSocketClient() || relayAuthenticated;
 }
 
 void markSocketConnected(uint8_t clientNum)
@@ -1386,7 +1492,36 @@ void startNetwork()
 {
   WiFi.persistent(false);
   WiFi.setSleep(false);
-  startFallbackAccessPoint();
+
+  if (!connectToRouter())
+    startFallbackAccessPoint();
+}
+
+void startRelayClient()
+{
+  if (!kUseCloudRelay)
+    return;
+
+  if (WiFi.status() != WL_CONNECTED)
+  {
+    Serial.println(F("Cloud relay disabled for this boot because router Wi-Fi is not connected."));
+    return;
+  }
+
+  if (String(kRelayDeviceToken) == "PASTE_AQUASCAN_DEVICE_TOKEN_HERE" || strlen(kRelayDeviceToken) == 0)
+  {
+    Serial.println(F("Cloud relay device token is not configured. Paste AQUASCAN_DEVICE_TOKEN into kRelayDeviceToken before flashing."));
+    return;
+  }
+
+  relaySocket.beginSSL(kRelayHost, kRelayPort, kRelayPath);
+  relaySocket.onEvent(handleRelayEvent);
+  relaySocket.setReconnectInterval(kRelayReconnectIntervalMs);
+  relaySocket.enableHeartbeat(15000, 3000, 2);
+
+  Serial.print(F("Cloud relay client starting: wss://"));
+  Serial.print(kRelayHost);
+  Serial.println(kRelayPath);
 }
 
 bool connectToRouter()

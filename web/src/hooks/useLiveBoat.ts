@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { buildDriveCommand, neutralMicros } from '../domain/drive'
+import { getCurrentFirebaseIdToken } from '../domain/firebaseAuth'
 import { addSensorPacket, calculateSensorAverages, createSensorAverageAccumulator } from '../domain/sensorAverages'
 import type { AquaMission, AquaSample, DriveCommand, DriveStatus, LiveSettings, TelemetryHealth, TelemetrySnapshot } from '../types/aqua'
 
@@ -158,10 +159,26 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
       return
     }
     setSocketState('connecting')
-    const socket = new WebSocket(`ws://${settings.host}:${settings.port}/`)
+    const relayUrl = settings.relayUrl?.trim()
+    const socket = new WebSocket(relayUrl || `ws://${settings.host}:${settings.port}/`)
     socketRef.current = socket
 
-    socket.addEventListener('open', () => {
+    socket.addEventListener('open', async () => {
+      if (relayUrl) {
+        try {
+          const token = await getCurrentFirebaseIdToken()
+          if (!token) {
+            setSocketState('error')
+            socket.close(4001, 'Missing Firebase operator token')
+            return
+          }
+          socket.send(JSON.stringify({ type: 'auth', token }))
+        } catch {
+          setSocketState('error')
+          socket.close(4001, 'Unable to read Firebase operator token')
+          return
+        }
+      }
       setSocketState('connected')
       lastSeenRef.current = Date.now()
       socket.send(JSON.stringify({ type: 'hello', client: 'AQUAScan Web', version: '0.1.0' }))
@@ -220,7 +237,7 @@ export function useLiveBoat(settings: LiveSettings, liveMode: boolean, joystick:
         setPacketAgeMs(undefined)
       }
     })
-  }, [queueStatusForUi, recordSensorPacket, settings.host, settings.port, simulator?.enabled])
+  }, [queueStatusForUi, recordSensorPacket, settings.host, settings.port, settings.relayUrl, simulator?.enabled])
 
   const toggleArm = useCallback(() => {
     if (!liveMode || socketState !== 'connected' || estop) return

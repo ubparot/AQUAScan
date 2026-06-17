@@ -428,7 +428,7 @@ function App() {
     setMission(cloned)
     setMetricId(project.selectedMetricId)
     setLayers(project.layers)
-    setSettings(project.liveSettings)
+    setSettings({ ...defaultLiveSettings, ...project.liveSettings })
     setSelectedSampleIndex(0)
     setNormalizedTime(0)
     setIsPlaying(false)
@@ -757,13 +757,14 @@ function App() {
     }
   }
 
+  const liveEndpointLabel = settings.relayUrl?.trim() || `${settings.host}:${settings.port}`
   const connectionLabel =
     simulatorEnabled && live.socketState === 'connected'
       ? 'Simulator connected'
       : live.socketState === 'connected'
-        ? `Connected ${settings.host}:${settings.port}`
+        ? `Connected ${liveEndpointLabel}`
       : live.socketState === 'connecting'
-        ? `Connecting ${settings.host}:${settings.port}`
+        ? `Connecting ${liveEndpointLabel}`
         : live.socketState === 'error'
           ? 'Connection error'
           : simulatorEnabled
@@ -1009,6 +1010,7 @@ function App() {
                       </span>
                     </label>
                     <div className="form-grid">
+                      <Field label="Relay URL" value={settings.relayUrl ?? ''} onChange={(value) => setSettings({ ...settings, relayUrl: value })} />
                       <Field label="Boat host" value={settings.host} onChange={(value) => setSettings({ ...settings, host: value })} />
                       <Field label="Port" type="number" value={settings.port} onChange={(value) => setSettings({ ...settings, port: Number(value) || 81 })} />
                     </div>
@@ -1149,6 +1151,7 @@ function App() {
               </label>
 
               <div className="form-grid">
+                <Field label="Relay URL" value={settings.relayUrl ?? ''} onChange={(value) => setSettings({ ...settings, relayUrl: value })} />
                 <Field label="Boat host" value={settings.host} onChange={(value) => setSettings({ ...settings, host: value })} />
                 <Field label="Port" type="number" value={settings.port} onChange={(value) => setSettings({ ...settings, port: Number(value) || 81 })} />
                 <Field label="Deadzone" type="number" step="0.01" value={settings.deadzone} onChange={(value) => setSettings({ ...settings, deadzone: Number(value) || 0 })} />

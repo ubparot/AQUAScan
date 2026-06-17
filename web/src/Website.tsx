@@ -7,6 +7,9 @@ import {
   Database,
   Gauge,
   Layers3,
+  LockKeyhole,
+  LogIn,
+  Mail,
   Map,
   MapPin,
   Menu,
@@ -14,11 +17,22 @@ import {
   Route,
   Satellite,
   ShipWheel,
+  ShieldCheck,
   Waves,
   X,
 } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import App from './App'
+import {
+  createEmailAccount,
+  getControlAuthSetupIssues,
+  sendEmailPasswordReset,
+  signInWithEmail,
+  signInWithGoogle,
+  signOutOfGoogle,
+  subscribeToControlAuth,
+  type ControlAuthUser,
+} from './domain/firebaseAuth'
 import './Website.css'
 
 type SitePage = 'home' | 'technology' | 'impact' | 'about' | 'control'
@@ -71,16 +85,184 @@ function Website() {
   if (page === 'control') {
     return (
       <div className="control-route">
-        <button className="control-back" type="button" onClick={() => navigate('home')}>
-          <Waves size={18} />
-          AQUAScan site
-        </button>
-        <App />
+        <ControlAuthGate onBack={() => navigate('home')}>
+          {(logout, user) => (
+            <>
+              <div className="control-actions" aria-label="Control dashboard actions">
+                <span className="control-user">
+                  {user.photoURL && <img src={user.photoURL} alt="" />}
+                  <span>{user.email}</span>
+                </span>
+                <button className="control-back" type="button" onClick={() => navigate('home')}>
+                  <Waves size={18} />
+                  AQUAScan site
+                </button>
+                <button className="control-logout" type="button" onClick={logout}>
+                  <LockKeyhole size={17} />
+                  Log out
+                </button>
+              </div>
+              <App />
+            </>
+          )}
+        </ControlAuthGate>
       </div>
     )
   }
 
   return <MarketingSite page={page} navigate={navigate} />
+}
+
+function ControlAuthGate({ children, onBack }: { children: (logout: () => void, user: ControlAuthUser) => ReactNode; onBack: () => void }) {
+  const [authReady, setAuthReady] = useState(false)
+  const [user, setUser] = useState<ControlAuthUser | null>(null)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [emailMode, setEmailMode] = useState<'signin' | 'create'>('signin')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const setupIssues = getControlAuthSetupIssues()
+  const configured = setupIssues.length === 0
+
+  useEffect(() => subscribeToControlAuth((nextState) => {
+    setAuthReady(nextState.ready)
+    setUser(nextState.user)
+    if (nextState.error) setError(nextState.error)
+  }), [])
+
+  const login = async () => {
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      setUser(await signInWithGoogle())
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Google sign-in failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const loginWithEmail = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      const nextUser = emailMode === 'create'
+        ? await createEmailAccount(email, password, displayName)
+        : await signInWithEmail(email, password)
+      setUser(nextUser)
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Email sign-in failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const resetPassword = async () => {
+    if (!email.trim()) {
+      setError('Enter your email address first.')
+      return
+    }
+
+    setBusy(true)
+    setError('')
+    setMessage('')
+    try {
+      await sendEmailPasswordReset(email)
+      setMessage('Password reset email sent.')
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : 'Unable to send password reset email.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const logout = async () => {
+    setBusy(true)
+    try {
+      await signOutOfGoogle()
+      setUser(null)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (user) return <>{children(logout, user)}</>
+
+  return (
+    <main className="auth-screen">
+      <button className="auth-back" type="button" onClick={onBack}>
+        <Waves size={18} />
+        Back to AQUAScan site
+      </button>
+      <section className="auth-card" aria-labelledby="control-auth-title">
+        <div className="auth-icon"><ShieldCheck size={34} /></div>
+        <p className="site-kicker"><span /> Operator access</p>
+        <h1 id="control-auth-title">Sign in to live control.</h1>
+        <p>
+          Use an approved Google account before opening the dashboard. Public project pages remain available without
+          signing in.
+        </p>
+        {configured ? (
+          <div className="auth-methods">
+            <button type="button" disabled={!authReady || busy} onClick={login}>
+              <LogIn size={18} />
+              {busy ? 'Opening Google...' : authReady ? 'Continue with Google' : 'Checking Google session...'}
+            </button>
+            <div className="auth-divider"><span /> or use email/password <span /></div>
+            <form onSubmit={loginWithEmail} className="auth-form">
+              <div className="auth-mode-toggle" aria-label="Email authentication mode">
+                <button type="button" data-active={emailMode === 'signin'} onClick={() => setEmailMode('signin')}>Sign in</button>
+                <button type="button" data-active={emailMode === 'create'} onClick={() => setEmailMode('create')}>Create account</button>
+              </div>
+              {emailMode === 'create' && (
+                <label>
+                  Name
+                  <input type="text" value={displayName} autoComplete="name" onChange={(event) => setDisplayName(event.target.value)} />
+                </label>
+              )}
+              <label>
+                Email
+                <span className="auth-input-row">
+                  <Mail size={18} />
+                  <input type="email" value={email} autoComplete="email" required onChange={(event) => setEmail(event.target.value)} />
+                </span>
+              </label>
+              <label>
+                Password
+                <span className="auth-input-row">
+                  <LockKeyhole size={18} />
+                  <input type="password" value={password} autoComplete={emailMode === 'create' ? 'new-password' : 'current-password'} required minLength={6} onChange={(event) => setPassword(event.target.value)} />
+                </span>
+              </label>
+              <button type="submit" disabled={!authReady || busy}>
+                <LockKeyhole size={18} />
+                {emailMode === 'create' ? 'Create account' : 'Sign in with email'}
+              </button>
+              <button className="auth-link-button" type="button" disabled={busy} onClick={resetPassword}>Send password reset email</button>
+            </form>
+            {message && <p className="auth-success" role="status">{message}</p>}
+            {error && <p className="auth-error" role="alert">{error}</p>}
+          </div>
+        ) : (
+          <div className="auth-setup-warning" role="status">
+            <strong>Firebase auth is not configured yet.</strong>
+            <ul>
+              {setupIssues.map((issue) => <li key={issue}>{issue}</li>)}
+            </ul>
+          </div>
+        )}
+        <p className="auth-note">
+          Access is limited by <code>VITE_AQUASCAN_ALLOWED_EMAILS</code>. The boat relay should also verify the same
+          Google/Firebase token before accepting motor commands.
+        </p>
+      </section>
+    </main>
+  )
 }
 
 function MarketingSite({ page, navigate }: { page: Exclude<SitePage, 'control'>; navigate: (page: SitePage) => void }) {

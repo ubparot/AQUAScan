@@ -105,6 +105,7 @@ export type TelemetrySnapshot = DriveStatus & {
 export type LiveSettings = {
   host: string
   port: number
+  relayUrl: string
   deadzone: number
   maxOutput: number
   sendRateHz: number
