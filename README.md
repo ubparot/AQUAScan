@@ -6,6 +6,21 @@ visualization, live WebSocket boat control, firmware for the ESP32/Arduino contr
 chain, a browser dashboard, and a first-pass ML pipeline for water-quality
 prediction.
 
+## At a Glance
+
+- **Purpose:** collect, visualize, and review water-quality data from a small
+  autonomous or operator-controlled surface vessel.
+- **Primary app:** Unity 2022.3 LTS mission visualization, playback, and live
+  boat-control interface.
+- **Web app:** React/Vite dashboard for public project pages, mission review,
+  Firebase-protected control, and local WebSocket operation.
+- **Hardware path:** browser or Unity client -> ESP32 Wi-Fi gateway -> Arduino
+  Mega ESC bridge -> dual-motor vessel.
+- **Data path:** mission CSV/JSON files -> Unity/web visualization -> optional
+  Python ML training and ONNX export.
+- **Safety posture:** disarmed startup, neutral-on-timeout behavior, latched
+  E-stop handling, and bench-validation requirements before field use.
+
 ## What This Repository Contains
 
 - **Unity visualization** for mission playback, live boat telemetry, sample point
