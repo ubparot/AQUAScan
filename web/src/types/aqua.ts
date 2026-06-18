@@ -66,6 +66,15 @@ export type DriveStatus = {
   neutralizeCount?: number
   probeDirection?: 'raise' | 'lower' | 'stop'
   probeSpeed?: number
+  missionReady?: boolean
+  missionWaypointCount?: number
+  autonomousActive?: boolean
+  autonomousPaused?: boolean
+  autonomousState?: string
+  autonomousReason?: string
+  autonomousWaypointIndex?: number
+  autonomousTargetDistanceMeters?: number
+  autonomousTargetBearingDeg?: number
   rssi?: number
   latitude?: number
   longitude?: number
@@ -100,6 +109,11 @@ export type TelemetryHealth = 'offline' | 'connecting' | 'fresh' | 'stale' | 'er
 export type TelemetrySnapshot = DriveStatus & {
   receivedAtMs: number
   packetAgeMs: number
+}
+
+export type SensorRecordingRow = DriveStatus & {
+  recordedAtUtc: string
+  receivedAtMs: number
 }
 
 export type LiveSettings = {

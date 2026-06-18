@@ -58,7 +58,7 @@ import { defaultResearchModelMetadataUrl, loadResearchModelBackend, loadingResea
 import { analyzeResearchPhenomena, type ResearchPhenomenonAnalysis } from './domain/researchPhenomena'
 import { useLiveBoat } from './hooks/useLiveBoat'
 import { useLocalStorageState } from './hooks/useLocalStorageState'
-import type { AquaMission, DriveStatus, LayerVisibility, TabId, TelemetryHealth } from './types/aqua'
+import type { AquaMission, DriveStatus, LayerVisibility, SensorRecordingRow, TabId, TelemetryHealth } from './types/aqua'
 
 type RunState = 'draft' | 'prepared' | 'armed' | 'running' | 'paused' | 'completed' | 'aborted'
 
@@ -374,7 +374,12 @@ function App() {
     if (!mission || !isPreflightReady) return
     setExecutionPreparedAt(new Date().toISOString())
     setRunState('prepared')
-    appendRunEvent('prepared', 'Mission prepared for frontend run mode')
+    if (liveMode && live.socketState === 'connected' && uploadPlan) {
+      const uploaded = live.uploadMission(uploadPlan.messages)
+      appendRunEvent('prepared', uploaded ? 'Mission uploaded to boat controller' : 'Mission upload failed')
+    } else {
+      appendRunEvent('prepared', simulatorEnabled ? 'Mission prepared for simulator run mode' : 'Mission prepared for playback tracking')
+    }
   }
 
   const armRunMode = () => {
@@ -385,26 +390,38 @@ function App() {
 
   const startRunMode = () => {
     if (!mission || (runState !== 'armed' && runState !== 'paused')) return
+    if (liveMode && live.socketState === 'connected') {
+      live.sendMissionControl(runState === 'paused' ? 'resume' : 'start')
+    }
     setRunState('running')
     setIsPlaying(false)
-    appendRunEvent('running', simulatorEnabled ? 'Browser simulator run started' : 'Frontend run tracking started')
+    appendRunEvent('running', simulatorEnabled ? 'Browser simulator run started' : liveMode ? 'Autonomous hardware run started' : 'Frontend run tracking started')
   }
 
   const pauseRunMode = () => {
     if (runState !== 'running') return
+    if (liveMode && live.socketState === 'connected') {
+      live.sendMissionControl('pause')
+    }
     setRunState('paused')
     appendRunEvent('paused', 'Run paused')
   }
 
   const abortRunMode = () => {
     if (runState === 'completed' || runState === 'aborted' || runState === 'draft') return
+    if (liveMode && live.socketState === 'connected') {
+      live.sendMissionControl('abort')
+    }
     setRunState('aborted')
     setJoystick([0, 0])
-    appendRunEvent('aborted', 'Run aborted; frontend commands forced neutral')
+    appendRunEvent('aborted', 'Run aborted; boat commanded neutral')
   }
 
   const completeRunMode = () => {
     if (!mission) return
+    if (liveMode && live.socketState === 'connected') {
+      live.sendMissionControl('stop')
+    }
     setRunState('completed')
     setNormalizedTime(1)
     setSelectedSampleIndex(Math.max(0, mission.samples.length - 1))
@@ -556,6 +573,12 @@ function App() {
     downloadBlob(`${slugify(mission.missionName)}-planned.${format}`, blob)
   }
 
+  const exportSensorRecording = () => {
+    if (live.sensorRecording.length === 0) return
+    const baseName = slugify(projectName || mission?.missionName || 'aquascan')
+    downloadText(`${baseName}-sensor-recording.csv`, sensorRecordingCsv(live.sensorRecording), 'text/csv')
+  }
+
   const prepareExecution = () => {
     markRunPrepared()
   }
@@ -596,9 +619,9 @@ function App() {
     distanceRemainingMeters: runProgress.distanceRemainingMeters,
     etaSeconds: runProgress.etaSeconds,
     executionPreparedAt,
-    mode: simulatorEnabled ? 'simulator' : liveMode ? 'hardware-tracking' : 'playback',
+    mode: simulatorEnabled ? 'simulator' : liveMode ? 'hardware-autonomous' : 'playback',
     hardwareSafe: true,
-    note: 'Frontend run mode does not upload, start, or command autonomous mission execution.',
+    note: liveMode ? 'Hardware mode uploads waypoints and commands the ESP32 autonomous route follower.' : 'Playback mode tracks the mission without commanding hardware.',
     events: runEvents,
   })
 
@@ -1032,7 +1055,7 @@ function App() {
                     <button className="primary-button prep-button" disabled={!isPreflightReady} onClick={prepareExecution}>
                       Prepare mission
                     </button>
-                    <p className="muted">{executionPreparedAt ? `Prepared ${new Date(executionPreparedAt).toLocaleTimeString()}` : 'Preparation validates state only. It does not start the boat.'}</p>
+                    <p className="muted">{executionPreparedAt ? `Prepared ${new Date(executionPreparedAt).toLocaleTimeString()}` : 'Preparation validates state and uploads the route when hardware is connected.'}</p>
                   </>
                 )}
               </article>
@@ -1077,6 +1100,10 @@ function App() {
                   <Readout label="ETA" value={runProgress.etaSeconds !== undefined ? `${Math.ceil(runProgress.etaSeconds)} s` : '--'} />
                   <Readout label="Remaining" value={runProgress.distanceRemainingMeters !== undefined ? `${runProgress.distanceRemainingMeters.toFixed(1)} m` : '--'} />
                   <Readout label="Takeover" value={liveMode && live.armed ? 'Manual armed' : joystick[0] !== 0 || joystick[1] !== 0 ? 'Joystick active' : 'None'} />
+                  <Readout label="Boat mode" value={live.status.autonomousActive ? 'Autonomous' : live.status.autonomousPaused ? 'Paused' : live.status.missionReady ? 'Route ready' : 'Manual'} />
+                  <Readout label="Target" value={live.status.autonomousTargetDistanceMeters !== undefined ? `${live.status.autonomousTargetDistanceMeters.toFixed(1)} m` : '--'} />
+                  <Readout label="Route wp" value={live.status.missionWaypointCount ? `${(live.status.autonomousWaypointIndex ?? 0) + 1}/${live.status.missionWaypointCount}` : '--'} />
+                  <Readout label="Reason" value={live.status.autonomousReason ?? '--'} />
                 </div>
               </article>
 
@@ -1129,7 +1156,7 @@ function App() {
                 </div>
               </article>
 
-              <p className="status-copy">Frontend run mode simulates/tracks mission execution only. It does not upload waypoints or start autonomous hardware execution.</p>
+              <p className="status-copy">Hardware run mode uploads waypoints, starts the ESP32 route follower, and keeps manual drive/E-stop available for takeover.</p>
             </section>
           )}
 
@@ -1316,6 +1343,38 @@ function App() {
                   <Readout label="Light raw" value={formatLiveSensorValue(live.status.lightRaw, 0)} />
                 </div>
                 <p className="status-copy">Raw and voltage readings are shown directly from the probe stream. Calibrate them before treating them as pH, DO, TDS, turbidity, UV, or light measurements.</p>
+              </article>
+              <article className="run-panel">
+                <div className="mission-tools-header">
+                  <div>
+                    <p className="eyebrow">CSV recording</p>
+                    <h3>{live.sensorRecordingActive ? 'Recording live data' : 'Recorder idle'}</h3>
+                  </div>
+                  <span className="muted">{live.sensorRecording.length} row{live.sensorRecording.length === 1 ? '' : 's'}</span>
+                </div>
+                <div className="button-row">
+                  <button className="primary-button compact-button" type="button" disabled={live.sensorRecordingActive} onClick={live.startSensorRecording}>
+                    Start recording
+                  </button>
+                  <button className="secondary-button compact-button" type="button" disabled={!live.sensorRecordingActive} onClick={live.stopSensorRecording}>
+                    Stop
+                  </button>
+                  <button className="secondary-button compact-button" type="button" disabled={live.sensorRecording.length === 0} onClick={exportSensorRecording}>
+                    <Download size={14} />
+                    CSV
+                  </button>
+                  <button className="secondary-button compact-button" type="button" disabled={live.sensorRecordingActive || live.sensorRecording.length === 0} onClick={live.clearSensorRecording}>
+                    <Trash2 size={14} />
+                    Clear
+                  </button>
+                </div>
+                <div className="telemetry-grid">
+                  <Readout label="Rows saved" value={String(live.sensorRecording.length)} />
+                  <Readout label="Latest seq" value={live.sensorRecording.at(-1)?.sensorSeq !== undefined ? String(live.sensorRecording.at(-1)?.sensorSeq) : '--'} />
+                  <Readout label="Latest GPS" value={formatRecordingGps(live.sensorRecording.at(-1))} />
+                  <Readout label="Latest time" value={live.sensorRecording.at(-1) ? new Date(live.sensorRecording.at(-1)!.recordedAtUtc).toLocaleTimeString() : '--'} />
+                </div>
+                <p className="status-copy">Start recording before a run. Each unique sensor packet is saved with timestamp, GPS, depth, battery, and raw/voltage probe values, then exported as CSV for graphs.</p>
               </article>
               <article className="run-panel">
                 <div className="mission-tools-header">
@@ -1696,7 +1755,7 @@ function App() {
             <button className="primary-button prep-button" disabled={!isPreflightReady} onClick={prepareExecution}>
               Prepare mission
             </button>
-            <p className="muted">{executionPreparedAt ? `Prepared ${new Date(executionPreparedAt).toLocaleTimeString()}` : 'Preparation does not upload or start the boat.'}</p>
+            <p className="muted">{executionPreparedAt ? `Prepared ${new Date(executionPreparedAt).toLocaleTimeString()}` : 'Preparation uploads the route when connected to hardware.'}</p>
             {uploadPlan && (
               <div className="upload-protocol-panel">
                 <div className="mission-tools-header">
@@ -1721,7 +1780,7 @@ function App() {
   2,
 )}
                 </pre>
-                <p className="muted">Protocol preview only. No waypoint upload is sent to hardware in this build.</p>
+                <p className="muted">{liveMode && live.socketState === 'connected' ? 'Prepare mission sends these waypoints to the boat.' : 'Connect in live mode to upload this route to hardware.'}</p>
               </div>
             )}
           </div>
@@ -1770,6 +1829,70 @@ function downloadBlob(filename: string, blob: Blob) {
   anchor.download = filename
   anchor.click()
   URL.revokeObjectURL(url)
+}
+
+function sensorRecordingCsv(rows: SensorRecordingRow[]) {
+  const headers = [
+    'recorded_at_utc',
+    'sensor_seq',
+    'latitude',
+    'longitude',
+    'altitude_m',
+    'heading_deg',
+    'speed_mps',
+    'depth_m',
+    'battery_percent',
+    'temperature_c',
+    'distance_cm',
+    'turbidity_raw',
+    'turbidity_v',
+    'ph_raw',
+    'ph_v',
+    'do_raw',
+    'do_v',
+    'tds_raw',
+    'tds_v',
+    'uv_raw',
+    'uv_v',
+    'light_raw',
+    'light_v',
+    'rssi_dbm',
+  ]
+
+  const csvRows = rows.map((row) => [
+    row.recordedAtUtc,
+    row.sensorSeq,
+    row.latitude,
+    row.longitude,
+    row.altitude,
+    row.headingDeg,
+    row.speedMps,
+    row.depthMeters,
+    row.batteryPercent,
+    row.temperatureC,
+    row.distanceCm,
+    row.turbidityRaw,
+    row.turbidityVoltage,
+    row.phRaw,
+    row.phVoltage,
+    row.dissolvedOxygenRaw,
+    row.dissolvedOxygenVoltage,
+    row.tdsRaw,
+    row.tdsVoltage,
+    row.uvRaw,
+    row.uvVoltage,
+    row.lightRaw,
+    row.lightVoltage,
+    row.rssi,
+  ].map(recordingCsvCell).join(','))
+
+  return [headers.join(','), ...csvRows].join('\n')
+}
+
+function recordingCsvCell(value: string | number | boolean | undefined) {
+  if (value === undefined) return ''
+  const text = String(value)
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
 }
 
 function summarizeRunProgress(mission: AquaMission | undefined, normalizedTime: number) {
@@ -2088,6 +2211,11 @@ function formatAge(ageMs: number) {
 function formatLiveSensorValue(value: number | undefined, decimals: number, unit = '') {
   if (value === undefined || !Number.isFinite(value)) return '--'
   return `${value.toFixed(decimals)}${unit ? ` ${unit}` : ''}`
+}
+
+function formatRecordingGps(row: SensorRecordingRow | undefined) {
+  if (!row || row.latitude === undefined || row.longitude === undefined) return '--'
+  return `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`
 }
 
 function formatAlertStatus(activeAlerts: OperatorAlert[], primaryAlert: OperatorAlert) {

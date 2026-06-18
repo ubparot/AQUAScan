@@ -31,12 +31,8 @@
   #define ESP_ARDUINO_VERSION_MAJOR 2
 #endif
 
-#if __has_include(<TinyGPSPlus.h>)
-  #include <TinyGPSPlus.h>
-  #define AQUASCAN_HAS_TINYGPS 1
-#else
-  #define AQUASCAN_HAS_TINYGPS 0
-#endif
+#include <TinyGPS++.h>
+#define AQUASCAN_HAS_TINYGPS 1
 
 namespace
 {
@@ -53,6 +49,7 @@ namespace
   const unsigned long kCommandTimeoutMs = 3500;
   const unsigned long kBridgeKeepaliveIntervalMs = 100;
   const unsigned long kStatusBroadcastIntervalMs = 250;
+  const unsigned long kAutonomousControlIntervalMs = 250;
   const unsigned long kBatterySampleIntervalMs = 1000;
   const unsigned long kGpsFreshMs = 3000;
   const unsigned long kSensorFreshMs = 3000;
@@ -90,6 +87,13 @@ namespace
   const int kNeutralMicros = 1500;
   const int kMinMicros = 1000;
   const int kMaxMicros = 2000;
+  const int kAutonomousCruiseOffset = 120;
+  const int kAutonomousMinForwardOffset = 70;
+  const int kAutonomousMaxTurnOffset = 180;
+  const float kAutonomousTurnGain = 3.0f;
+  const float kAutonomousArrivalRadiusMeters = 3.0f;
+  const float kAutonomousSlowRadiusMeters = 8.0f;
+  const uint8_t kMaxMissionWaypoints = 64;
   const size_t kMaxBridgeCommandLength = 64;
   const size_t kMaxBridgeLineLength = 256;
   const size_t kBridgeReadBudget = 256;
@@ -105,6 +109,14 @@ namespace
   const char* kRelayDeviceToken = "HmCZ8nlbq0EFrpXGSVaORkP2J5isDWdvTj73BuUf6NMKxoAt";
   const unsigned long kRelayReconnectIntervalMs = 5000;
 }
+
+struct MissionWaypoint
+{
+  double latitude;
+  double longitude;
+  float speedMps;
+  bool received;
+};
 
 HardwareSerial BridgeSerial(2);
 WebSocketsClient relaySocket;
@@ -183,6 +195,18 @@ String uploadMissionId;
 String uploadChecksum;
 int uploadWaypointCount = 0;
 int uploadReceivedWaypoints = 0;
+MissionWaypoint missionWaypoints[kMaxMissionWaypoints];
+int missionWaypointCount = 0;
+bool missionReady = false;
+
+bool autonomousActive = false;
+bool autonomousPaused = false;
+int autonomousWaypointIndex = 0;
+float autonomousTargetDistanceMeters = NAN;
+float autonomousTargetBearingDeg = NAN;
+String autonomousState = "idle";
+String autonomousLastReason = "not_started";
+unsigned long lastAutonomousControlAt = 0;
 
 void startNetwork();
 bool connectToRouter();
@@ -195,6 +219,13 @@ void handleDriveMessage(uint8_t clientNum, const String& message);
 void handleEstopMessage(uint8_t clientNum, const String& message);
 void handleProbeControlMessage(uint8_t clientNum, const String& message);
 void handleMissionUploadMessage(uint8_t clientNum, const String& type, const String& message);
+void handleMissionControlMessage(uint8_t clientNum, const String& message);
+void resetMissionStorage();
+void stopAutonomous(const char* reason, bool disarm);
+void updateAutonomousControl();
+float distanceMeters(double latA, double lonA, double latB, double lonB);
+float bearingDeg(double latA, double lonA, double latB, double lonB);
+float wrapDegrees180(float value);
 void readUsbSerialCommands();
 void handleUsbSerialCommand(String command);
 void printUsbHelp();
@@ -234,6 +265,7 @@ String readJsonString(const String& message, const char* key, const String& fall
 bool readJsonBool(const String& message, const char* key, bool fallback);
 int readJsonInt(const String& message, const char* key, int fallback);
 float readJsonFloat(const String& message, const char* key, float fallback);
+double readJsonDouble(const String& message, const char* key, double fallback);
 int findJsonValueStart(const String& message, const char* key);
 String escapeJson(const String& value);
 void appendSensorJsonFields(String& message);
@@ -308,6 +340,7 @@ void loop()
   if (kUseArduinoBridge)
     readBridgeStatus();
   updateTelemetry();
+  updateAutonomousControl();
 
   const unsigned long now = millis();
 
@@ -441,6 +474,12 @@ void handleTextMessage(uint8_t clientNum, const char* payload, size_t length)
     return;
   }
 
+  if (type == "mission_control")
+  {
+    handleMissionControlMessage(clientNum, message);
+    return;
+  }
+
   if (type == "mission_upload_begin" || type == "mission_waypoint" || type == "mission_upload_commit" || type == "mission_upload_abort")
   {
     handleMissionUploadMessage(clientNum, type, message);
@@ -469,6 +508,9 @@ void handleDriveMessage(uint8_t clientNum, const String& message)
   const bool nextEstop = readJsonBool(message, "estop", estop);
   const int nextLeft = readJsonInt(message, "left", leftMicros);
   const int nextRight = readJsonInt(message, "right", rightMicros);
+
+  if (autonomousActive || autonomousPaused)
+    stopAutonomous("manual drive takeover", false);
 
   if (nextLeft < kMinMicros || nextLeft > kMaxMicros || nextRight < kMinMicros || nextRight > kMaxMicros)
   {
@@ -499,6 +541,7 @@ void handleDriveMessage(uint8_t clientNum, const String& message)
 void handleEstopMessage(uint8_t clientNum, const String& message)
 {
   lastSeq = readJsonInt(message, "seq", lastSeq);
+  stopAutonomous("e-stop", true);
   estop = true;
   armed = false;
   leftMicros = kNeutralMicros;
@@ -552,6 +595,8 @@ void handleMissionUploadMessage(uint8_t clientNum, const String& type, const Str
 
   if (type == "mission_upload_begin")
   {
+    stopAutonomous("mission upload", true);
+    resetMissionStorage();
     missionUploadActive = true;
     uploadMissionId = missionId;
     uploadChecksum = readJsonString(message, "checksum", "");
@@ -559,7 +604,10 @@ void handleMissionUploadMessage(uint8_t clientNum, const String& type, const Str
     uploadReceivedWaypoints = 0;
     lastSeq = seq;
 
-    sendMissionAck(clientNum, uploadMissionId, seq, uploadWaypointCount > 0, uploadWaypointCount > 0 ? "upload_started" : "empty_mission");
+    const bool accepted = uploadWaypointCount > 0 && uploadWaypointCount <= kMaxMissionWaypoints;
+    if (!accepted)
+      missionUploadActive = false;
+    sendMissionAck(clientNum, uploadMissionId, seq, accepted, accepted ? "upload_started" : uploadWaypointCount <= 0 ? "empty_mission" : "too_many_waypoints");
     sendMissionProgress(clientNum);
     return;
   }
@@ -567,9 +615,16 @@ void handleMissionUploadMessage(uint8_t clientNum, const String& type, const Str
   if (type == "mission_waypoint")
   {
     const int index = readJsonInt(message, "index", -1);
-    const bool accepted = missionUploadActive && missionId == uploadMissionId && index >= 0 && index < uploadWaypointCount;
+    const double waypointLat = readJsonDouble(message, "latitude", NAN);
+    const double waypointLon = readJsonDouble(message, "longitude", NAN);
+    const float waypointSpeed = readJsonFloat(message, "speedMps", 0.5f);
+    const bool validPosition = isfinite(waypointLat) && isfinite(waypointLon) && waypointLat >= -90.0 && waypointLat <= 90.0 && waypointLon >= -180.0 && waypointLon <= 180.0;
+    const bool accepted = missionUploadActive && missionId == uploadMissionId && index >= 0 && index < uploadWaypointCount && index < kMaxMissionWaypoints && validPosition;
     if (accepted)
+    {
+      missionWaypoints[index] = { waypointLat, waypointLon, constrain(waypointSpeed, 0.2f, 2.0f), true };
       uploadReceivedWaypoints = max(uploadReceivedWaypoints, index + 1);
+    }
     lastSeq = seq;
 
     sendMissionAck(clientNum, missionId, seq, accepted, accepted ? "waypoint_received" : "waypoint_rejected");
@@ -586,13 +641,21 @@ void handleMissionUploadMessage(uint8_t clientNum, const String& type, const Str
     sendMissionAck(clientNum, missionId, seq, accepted, accepted ? "upload_committed" : "upload_incomplete");
     sendMissionProgress(clientNum);
     if (accepted)
+    {
       missionUploadActive = false;
+      missionReady = true;
+      missionWaypointCount = uploadWaypointCount;
+      autonomousWaypointIndex = 0;
+      autonomousState = "ready";
+      autonomousLastReason = "route_committed";
+    }
     return;
   }
 
   if (type == "mission_upload_abort")
   {
     missionUploadActive = false;
+    resetMissionStorage();
     uploadMissionId = missionId;
     uploadReceivedWaypoints = 0;
     uploadWaypointCount = 0;
@@ -600,6 +663,214 @@ void handleMissionUploadMessage(uint8_t clientNum, const String& type, const Str
 
     sendMissionAck(clientNum, missionId, seq, true, "upload_aborted");
   }
+}
+
+void handleMissionControlMessage(uint8_t clientNum, const String& message)
+{
+  const int seq = readJsonInt(message, "seq", lastSeq);
+  const String action = readJsonString(message, "action", "");
+  lastSeq = seq;
+
+  if (action == "start" || action == "resume")
+  {
+    if (!missionReady || missionWaypointCount < 2)
+    {
+      autonomousState = "blocked";
+      autonomousLastReason = "no_committed_route";
+      sendMissionAck(clientNum, uploadMissionId, seq, false, "no_committed_route");
+      sendStatus(clientNum);
+      return;
+    }
+
+    if (!gpsFix)
+    {
+      autonomousState = "blocked";
+      autonomousLastReason = "no_gps_fix";
+      sendMissionAck(clientNum, uploadMissionId, seq, false, "no_gps_fix");
+      sendStatus(clientNum);
+      return;
+    }
+
+    if (estop)
+    {
+      autonomousState = "blocked";
+      autonomousLastReason = "estop_latched";
+      sendMissionAck(clientNum, uploadMissionId, seq, false, "estop_latched");
+      sendStatus(clientNum);
+      return;
+    }
+
+    autonomousActive = true;
+    autonomousPaused = false;
+    armed = true;
+    lastCommandAt = millis();
+    lastAutonomousControlAt = 0;
+    autonomousState = "running";
+    autonomousLastReason = action == "resume" ? "resumed" : "started";
+    sendMissionAck(clientNum, uploadMissionId, seq, true, autonomousLastReason);
+    sendStatus(clientNum);
+    return;
+  }
+
+  if (action == "pause")
+  {
+    stopAutonomous("paused", false);
+    autonomousPaused = missionReady;
+    autonomousState = "paused";
+    sendMissionAck(clientNum, uploadMissionId, seq, true, "paused");
+    sendStatus(clientNum);
+    return;
+  }
+
+  if (action == "stop" || action == "abort")
+  {
+    stopAutonomous(action == "abort" ? "aborted" : "stopped", true);
+    sendMissionAck(clientNum, uploadMissionId, seq, true, action == "abort" ? "aborted" : "stopped");
+    sendStatus(clientNum);
+    return;
+  }
+
+  sendMissionAck(clientNum, uploadMissionId, seq, false, "unknown_mission_control_action");
+  sendStatus(clientNum);
+}
+
+void resetMissionStorage()
+{
+  for (uint8_t i = 0; i < kMaxMissionWaypoints; i++)
+    missionWaypoints[i] = { 0.0, 0.0, 0.5f, false };
+
+  missionReady = false;
+  missionWaypointCount = 0;
+  uploadReceivedWaypoints = 0;
+  autonomousWaypointIndex = 0;
+  autonomousTargetDistanceMeters = NAN;
+  autonomousTargetBearingDeg = NAN;
+  autonomousState = "idle";
+  autonomousLastReason = "route_cleared";
+}
+
+void stopAutonomous(const char* reason, bool disarm)
+{
+  const bool wasAutonomous = autonomousActive || autonomousPaused;
+  autonomousActive = false;
+  autonomousPaused = false;
+  autonomousState = "idle";
+  autonomousLastReason = reason;
+  autonomousTargetDistanceMeters = NAN;
+  autonomousTargetBearingDeg = NAN;
+
+  if (disarm)
+    armed = false;
+
+  leftMicros = kNeutralMicros;
+  rightMicros = kNeutralMicros;
+  if (wasAutonomous || disarm)
+  {
+    applyEscOutputs(leftMicros, rightMicros);
+    sendBridgeCommand();
+  }
+}
+
+void updateAutonomousControl()
+{
+  if (!autonomousActive)
+    return;
+
+  const unsigned long now = millis();
+  if (now - lastAutonomousControlAt < kAutonomousControlIntervalMs)
+    return;
+  lastAutonomousControlAt = now;
+
+  if (estop)
+  {
+    stopAutonomous("estop_latched", true);
+    return;
+  }
+
+  if (!gpsFix)
+  {
+    stopAutonomous("gps_lost", true);
+    neutralize("autonomous gps lost");
+    return;
+  }
+
+  if (!missionReady || missionWaypointCount < 2 || autonomousWaypointIndex >= missionWaypointCount)
+  {
+    stopAutonomous("route_complete", true);
+    neutralize("autonomous route complete");
+    return;
+  }
+
+  MissionWaypoint& target = missionWaypoints[autonomousWaypointIndex];
+  if (!target.received)
+  {
+    stopAutonomous("missing_waypoint", true);
+    neutralize("autonomous missing waypoint");
+    return;
+  }
+
+  autonomousTargetDistanceMeters = distanceMeters(latitude, longitude, target.latitude, target.longitude);
+  autonomousTargetBearingDeg = bearingDeg(latitude, longitude, target.latitude, target.longitude);
+
+  if (autonomousTargetDistanceMeters <= kAutonomousArrivalRadiusMeters)
+  {
+    autonomousWaypointIndex++;
+    if (autonomousWaypointIndex >= missionWaypointCount)
+    {
+      stopAutonomous("route_complete", true);
+      neutralize("autonomous route complete");
+      return;
+    }
+    return;
+  }
+
+  const float headingError = wrapDegrees180(autonomousTargetBearingDeg - static_cast<float>(headingDeg));
+  const float slowScale = constrain(autonomousTargetDistanceMeters / kAutonomousSlowRadiusMeters, 0.35f, 1.0f);
+  const int forwardOffset = max(kAutonomousMinForwardOffset, static_cast<int>(kAutonomousCruiseOffset * slowScale));
+  const int turnOffset = constrain(static_cast<int>(headingError * kAutonomousTurnGain), -kAutonomousMaxTurnOffset, kAutonomousMaxTurnOffset);
+
+  leftMicros = clampPulse(kNeutralMicros + forwardOffset + turnOffset);
+  rightMicros = clampPulse(kNeutralMicros + forwardOffset - turnOffset);
+  armed = true;
+  lastCommandAt = now;
+  applyEscOutputs(leftMicros, rightMicros);
+  sendBridgeCommand();
+}
+
+float distanceMeters(double latA, double lonA, double latB, double lonB)
+{
+  const double earthRadiusMeters = 6371000.0;
+  const double phiA = latA * PI / 180.0;
+  const double phiB = latB * PI / 180.0;
+  const double dPhi = (latB - latA) * PI / 180.0;
+  const double dLambda = (lonB - lonA) * PI / 180.0;
+  const double sinDphi = sin(dPhi / 2.0);
+  const double sinDlambda = sin(dLambda / 2.0);
+  const double hav = sinDphi * sinDphi + cos(phiA) * cos(phiB) * sinDlambda * sinDlambda;
+  const double inverseHav = 1.0 - hav;
+  return static_cast<float>(earthRadiusMeters * 2.0 * atan2(sqrt(hav), sqrt(inverseHav > 0.0 ? inverseHav : 0.0)));
+}
+
+float bearingDeg(double latA, double lonA, double latB, double lonB)
+{
+  const double phiA = latA * PI / 180.0;
+  const double phiB = latB * PI / 180.0;
+  const double dLambda = (lonB - lonA) * PI / 180.0;
+  const double y = sin(dLambda) * cos(phiB);
+  const double x = cos(phiA) * sin(phiB) - sin(phiA) * cos(phiB) * cos(dLambda);
+  float bearing = static_cast<float>(atan2(y, x) * 180.0 / PI);
+  if (bearing < 0.0f)
+    bearing += 360.0f;
+  return bearing;
+}
+
+float wrapDegrees180(float value)
+{
+  while (value > 180.0f)
+    value -= 360.0f;
+  while (value < -180.0f)
+    value += 360.0f;
+  return value;
 }
 
 void readUsbSerialCommands()
@@ -869,15 +1140,89 @@ void readBridgeStatus()
 
 void applyBridgeStatus(const char* line)
 {
-  int values[5] = { bridgeLastSeq, bridgeArmed ? 1 : 0, bridgeEstop ? 1 : 0, bridgeLeftMicros, bridgeRightMicros };
-  if (!parseCsvIntegers(line, values, 5))
+  if (line[0] != 'S' || line[1] != ',')
     return;
 
-  bridgeLastSeq = values[0];
-  bridgeArmed = values[1] != 0;
-  bridgeEstop = values[2] != 0;
-  bridgeLeftMicros = clampPulse(values[3]);
-  bridgeRightMicros = clampPulse(values[4]);
+  const char* cursor = line + 2;
+  long parsedIntegers[6] = { bridgeLastSeq, bridgeArmed ? 1 : 0, bridgeEstop ? 1 : 0, bridgeLeftMicros, bridgeRightMicros, gpsFix ? 1 : 0 };
+
+  for (int i = 0; i < 5; i++)
+  {
+    char* endPointer = nullptr;
+    const long parsed = strtol(cursor, &endPointer, 10);
+    if (endPointer == cursor)
+      return;
+
+    parsedIntegers[i] = parsed;
+
+    if (i < 4)
+    {
+      if (*endPointer != ',')
+        return;
+      cursor = endPointer + 1;
+    }
+    else
+    {
+      cursor = endPointer;
+    }
+  }
+
+  bridgeLastSeq = static_cast<int>(parsedIntegers[0]);
+  bridgeArmed = parsedIntegers[1] != 0;
+  bridgeEstop = parsedIntegers[2] != 0;
+  bridgeLeftMicros = clampPulse(static_cast<int>(parsedIntegers[3]));
+  bridgeRightMicros = clampPulse(static_cast<int>(parsedIntegers[4]));
+
+  if (*cursor == '\0')
+    return;
+  if (*cursor != ',')
+    return;
+
+  cursor++;
+  char* endPointer = nullptr;
+  const long bridgeGpsFix = strtol(cursor, &endPointer, 10);
+  if (endPointer == cursor)
+    return;
+  cursor = endPointer;
+
+  if (*cursor != ',')
+  {
+    gpsFix = bridgeGpsFix != 0;
+    return;
+  }
+
+  double parsedGps[5] = { latitude, longitude, altitudeMeters, headingDeg, speedMps };
+  cursor++;
+  for (int i = 0; i < 5; i++)
+  {
+    endPointer = nullptr;
+    const double parsed = strtod(cursor, &endPointer);
+    if (endPointer == cursor)
+      return;
+
+    parsedGps[i] = parsed;
+
+    if (i == 4)
+    {
+      if (*endPointer != '\0')
+        return;
+    }
+    else
+    {
+      if (*endPointer != ',')
+        return;
+      cursor = endPointer + 1;
+    }
+  }
+
+  gpsFix = bridgeGpsFix != 0;
+  latitude = parsedGps[0];
+  longitude = parsedGps[1];
+  altitudeMeters = parsedGps[2];
+  headingDeg = parsedGps[3];
+  speedMps = parsedGps[4];
+  if (gpsFix)
+    lastGpsFixAt = millis();
 }
 
 void applyBridgeProbeStatus(const char* line)
@@ -1004,6 +1349,10 @@ void stopProbe(const char* reason)
 
 void neutralize(const char* reason)
 {
+  autonomousActive = false;
+  autonomousPaused = false;
+  autonomousState = "idle";
+  autonomousLastReason = reason;
   armed = false;
   lastNeutralizeReason = reason;
   neutralizeCount++;
@@ -1125,8 +1474,27 @@ String buildStatusJson()
   message += probeDirection > 0 ? F("lower") : probeDirection < 0 ? F("raise") : F("stop");
   message += F("\",\"probeSpeed\":");
   message += probeSpeed;
+  message += F(",\"missionReady\":");
+  message += (missionReady ? F("true") : F("false"));
+  message += F(",\"missionWaypointCount\":");
+  message += missionWaypointCount;
+  message += F(",\"autonomousActive\":");
+  message += (autonomousActive ? F("true") : F("false"));
+  message += F(",\"autonomousPaused\":");
+  message += (autonomousPaused ? F("true") : F("false"));
+  message += F(",\"autonomousState\":\"");
+  message += escapeJson(autonomousState);
+  message += F("\",\"autonomousReason\":\"");
+  message += escapeJson(autonomousLastReason);
+  message += F("\",\"autonomousWaypointIndex\":");
+  message += autonomousWaypointIndex;
   message += F(",\"rssi\":");
   message += (WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -1);
+
+  if (!isnan(autonomousTargetDistanceMeters))
+    appendJsonNumber(message, "autonomousTargetDistanceMeters", autonomousTargetDistanceMeters, 1);
+  if (!isnan(autonomousTargetBearingDeg))
+    appendJsonNumber(message, "autonomousTargetBearingDeg", autonomousTargetBearingDeg, 1);
 
   if (gpsFix)
   {
@@ -1394,6 +1762,21 @@ float readJsonFloat(const String& message, const char* key, float fallback)
   char* endPointer = nullptr;
   const char* start = message.c_str() + index;
   const float parsed = strtof(start, &endPointer);
+  if (endPointer == start)
+    return fallback;
+
+  return parsed;
+}
+
+double readJsonDouble(const String& message, const char* key, double fallback)
+{
+  const int index = findJsonValueStart(message, key);
+  if (index < 0)
+    return fallback;
+
+  char* endPointer = nullptr;
+  const char* start = message.c_str() + index;
+  const double parsed = strtod(start, &endPointer);
   if (endPointer == start)
     return fallback;
 

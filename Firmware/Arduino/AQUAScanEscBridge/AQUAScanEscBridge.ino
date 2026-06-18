@@ -3,6 +3,7 @@
 
   Target board: Arduino Mega 2560
   USB Serial: 115200 debug monitor
+  Serial1: 9600 GPS receiver
   Serial2: 115200 link to the ESP32 boat gateway
   Serial3: 19200 receive-only RS-485 probe link
 
@@ -11,9 +12,14 @@
     W,<seq>,<direction>,<speed>
 
   Arduino -> ESP32:
-    S,<seq>,<armed>,<estop>,<leftMicros>,<rightMicros>
+    S,<seq>,<armed>,<estop>,<leftMicros>,<rightMicros>,<gpsFix>,<lat>,<lon>,<altM>,<headingDeg>,<speedMps>
     P,<seq>,<direction>,<speed>
     R,<original RS-485 probe line>
+
+  GPS wiring:
+    GPS TX -> RX1 pin 19
+    GPS RX -> TX1 pin 18 (optional)
+    GND    -> Arduino GND
 
   RS-485 wiring:
     RO     -> RX3 pin 15
@@ -23,6 +29,7 @@
 */
 
 #include <Servo.h>
+#include <TinyGPS++.h>
 
 namespace
 {
@@ -33,13 +40,16 @@ namespace
   const uint8_t kRs485DirPin = 45;
 
   const unsigned long kBridgeBaudRate = 115200;
+  const unsigned long kGpsBaudRate = 9600;
   const unsigned long kRs485BaudRate = 19200;
   const unsigned long kDebugBaudRate = 115200;
   const unsigned long kStartupNeutralDelayMs = 5000;
   const unsigned long kCommandTimeoutMs = 3500;
   const unsigned long kStatusIntervalMs = 1000;
   const unsigned long kRs485DiagnosticIntervalMs = 2000;
+  const unsigned long kGpsFreshMs = 3000;
   const size_t kBridgeReadBudget = 48;
+  const size_t kGpsReadBudget = 128;
   const size_t kRs485ReadBudget = 128;
 
   const int kNeutralMicros = 1500;
@@ -51,6 +61,8 @@ namespace
 
 Servo leftEsc;
 Servo rightEsc;
+
+TinyGPSPlus gps;
 
 char serialLine[kMaxLineLength];
 size_t serialLineLength = 0;
@@ -72,9 +84,18 @@ unsigned long lastRs485DiagnosticAt = 0;
 unsigned long receivedRs485ByteCount = 0;
 unsigned long receivedRs485LineCount = 0;
 unsigned long receivedProbeLineCount = 0;
+bool gpsFix = false;
+double latitude = 0.0;
+double longitude = 0.0;
+double altitudeMeters = 0.0;
+double headingDeg = 0.0;
+double speedMps = 0.0;
+unsigned long lastGpsFixAt = 0;
+bool loggedGpsFix = false;
 
 void applyOutputs(int left, int right);
 void readBridgeCommands();
+void updateGps();
 void setRs485ReceiveMode();
 void readRs485Probe();
 void printRs485Diagnostics();
@@ -96,6 +117,7 @@ void printLineHex(const char* line);
 void setup()
 {
   Serial.begin(kDebugBaudRate);
+  Serial1.begin(kGpsBaudRate);
   Serial2.begin(kBridgeBaudRate);
   Serial3.begin(kRs485BaudRate);
 
@@ -113,12 +135,15 @@ void setup()
 
   sendStatus();
   Serial.println(F("AQUAScan Mega ESC bridge ready on Serial2."));
+  Serial.println(F("GPS receiver ready on Serial1 pins RX1=19/TX1=18."));
+  Serial.println(F("GPS telemetry: TinyGPSPlus enabled on Arduino Mega."));
   Serial.println(F("RS-485 probe receiver ready on Serial3 pins RX3=15/TX3=14, RE/DE=45; forwarding probe lines to ESP32."));
 }
 
 void loop()
 {
   readBridgeCommands();
+  updateGps();
   readRs485Probe();
   printRs485Diagnostics();
 
@@ -134,6 +159,46 @@ void loop()
   {
     sendStatus();
     sendWinchStatus();
+  }
+}
+
+void updateGps()
+{
+  size_t processed = 0;
+  while (Serial1.available() > 0 && processed < kGpsReadBudget)
+  {
+    gps.encode(static_cast<char>(Serial1.read()));
+    processed++;
+  }
+
+  if (gps.location.isValid() && gps.location.isUpdated())
+  {
+    gpsFix = true;
+    latitude = gps.location.lat();
+    longitude = gps.location.lng();
+    lastGpsFixAt = millis();
+
+    if (!loggedGpsFix)
+    {
+      loggedGpsFix = true;
+      Serial.print(F("GPS fix acquired: "));
+      Serial.print(latitude, 7);
+      Serial.print(',');
+      Serial.println(longitude, 7);
+    }
+  }
+
+  if (gps.altitude.isValid())
+    altitudeMeters = gps.altitude.meters();
+  if (gps.course.isValid())
+    headingDeg = gps.course.deg();
+  if (gps.speed.isValid())
+    speedMps = gps.speed.mps();
+
+  if (gpsFix && millis() - lastGpsFixAt > kGpsFreshMs)
+  {
+    gpsFix = false;
+    loggedGpsFix = false;
   }
 }
 
@@ -411,7 +476,19 @@ void sendStatus()
   Serial2.print(',');
   Serial2.print(leftMicros);
   Serial2.print(',');
-  Serial2.println(rightMicros);
+  Serial2.print(rightMicros);
+  Serial2.print(',');
+  Serial2.print(gpsFix ? 1 : 0);
+  Serial2.print(',');
+  Serial2.print(latitude, 7);
+  Serial2.print(',');
+  Serial2.print(longitude, 7);
+  Serial2.print(',');
+  Serial2.print(altitudeMeters, 2);
+  Serial2.print(',');
+  Serial2.print(headingDeg, 1);
+  Serial2.print(',');
+  Serial2.println(speedMps, 2);
 }
 
 void sendWinchStatus()
