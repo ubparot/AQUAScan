@@ -1,83 +1,32 @@
 # AQUAScan
 
-AQUAScan is a Unity-based visualization and control project for a semi-autonomous
-water-quality monitoring vessel. It combines mission replay, GPS-tagged sensor
-visualization, live WebSocket boat control, firmware for the ESP32/Arduino control
-chain, a browser dashboard, and a first-pass ML pipeline for water-quality
-prediction.
+AQUAScan is an autonomous research vessel and data platform for depth-aware
+water-quality monitoring. The project combines a deployable probe, live boat
+control, mission review, sensor mapping, firmware, and an ML pipeline for
+turning field measurements into useful environmental insight.
 
-## At a Glance
+![AQUAScan display and prototype](docs/images/aquascan-display.jpg)
 
-- **Purpose:** collect, visualize, and review water-quality data from a small
-  autonomous or operator-controlled surface vessel.
-- **Primary app:** Unity 2022.3 LTS mission visualization, playback, and live
-  boat-control interface.
-- **Web app:** React/Vite dashboard for public project pages, mission review,
-  Firebase-protected control, and local WebSocket operation.
-- **Hardware path:** browser or Unity client -> ESP32 Wi-Fi gateway -> Arduino
-  Mega ESC bridge -> dual-motor vessel.
-- **Data path:** mission CSV/JSON files -> Unity/web visualization -> optional
-  Python ML training and ONNX export.
-- **Safety posture:** disarmed startup, neutral-on-timeout behavior, latched
-  E-stop handling, and bench-validation requirements before field use.
+## What It Does
 
-## What This Repository Contains
+- Collects location-tagged water-quality samples from a small surface vessel.
+- Maps temperature, pH, dissolved oxygen, turbidity, conductivity, light,
+  ultraviolet, depth, speed, and battery data.
+- Provides a browser dashboard for mission playback, telemetry, planning, and
+  live control.
+- Uses ESP32 and Arduino firmware to bridge Wi-Fi commands to motor and probe
+  hardware.
+- Trains and exports a first-pass water-quality model for oxygen forecasting,
+  bloom-risk scoring, and anomaly detection.
 
-- **Unity visualization** for mission playback, live boat telemetry, sample point
-  clouds, heatmaps, route rendering, and depth-probe display.
-- **Live control stack** that sends differential-drive commands over WebSocket to
-  an ESP32 boat gateway and then to an Arduino Mega ESC bridge.
-- **Web dashboard** built with React, Vite, Three.js, and ONNX Runtime Web for
-  local mission review, simulation, and direct boat control.
-- **ML pipeline** for training and exporting a multi-task water-quality model from
-  mission CSV/JSON files and synthetic mission data.
-- **Firmware sketches** for ESP32 networking/sensor bring-up and Arduino ESC
-  pulse control.
+## Dashboard
 
-## Repository Layout
+![AQUAScan telemetry dashboard](docs/images/dashboard-telemetry.png)
 
-```text
-Assets/                    Unity scenes, scripts, shaders, sample missions, tests
-Assets/Docs/AQUAScan.md    Detailed Unity/live-control operating notes
-Firmware/                  ESP32 and Arduino sketches
-ML/                        Python training, data loading, tests, exported artifacts
-Packages/                  Unity package manifest and local packages
-ProjectSettings/           Unity project settings
-Tools/                     Portfolio graph and workbook generation scripts
-web/                       React/Vite dashboard
-```
-
-## Requirements
-
-- Unity **2022.3.57f1** or compatible Unity 2022.3 LTS editor
-- Unity Universal Render Pipeline 14.x, UGUI, TextMeshPro, Timeline, and Unity Test
-  Framework packages
-- Node.js and npm for the web dashboard
-- Python 3.10+ recommended for the ML and tooling scripts
-- Arduino IDE or CLI with ESP32 board support for firmware flashing
-
-## Unity Quick Start
-
-1. Open the repository root in Unity Hub using Unity `2022.3.57f1`.
-2. Let Unity restore packages from `Packages/manifest.json`.
-3. Open `Assets/Scenes/SampleScene.unity`.
-4. Use the included sample mission files in `Assets/StreamingAssets/` for playback.
-5. For live control, configure the boat host and port in the runtime HUD, switch to
-   `Live Control`, connect, then arm only after confirming neutral output.
-
-The Unity project supports two main operating modes:
-
-- `Playback`: load CSV/JSON missions, scrub the timeline, and visualize
-  GPS-tagged sensor layers.
-- `Live Control`: drive the dual-motor vessel over Wi-Fi while keeping the mission
-  visualization shell available.
-
-Detailed scene setup, wiring, WebSocket payloads, serial protocol, and operator
-flow are documented in `Assets/Docs/AQUAScan.md`.
-
-## Web Dashboard
-
-The `web/` app is a frontend-only local control and visualization dashboard.
+The `web/` app is the main control and visualization surface. It supports mission
+CSV/JSON loading, timeline playback, telemetry panels, sensor layers, planning
+tools, heuristic AI fallback predictions, Firebase-protected control, and direct
+WebSocket operation.
 
 ```powershell
 cd web
@@ -93,9 +42,62 @@ npm run build
 npm run lint
 ```
 
-The app can load mission CSV/JSON files, render a React Three Fiber lake scene,
-show telemetry and predictions, and connect directly to the boat over
-`ws://<boat-host>:81/`.
+## Analysis Views
+
+![AQUAScan analysis dashboard](docs/images/dashboard-analysis.png)
+
+The dashboard includes mission review and AI-ready analysis panels for dissolved
+oxygen, bloom risk, anomaly flags, forecast windows, and publishable phenomena
+notes.
+
+## Sensor Mapping
+
+![AQUAScan sensor maps](docs/images/sensor-maps.png)
+
+Mission data can be visualized as sensor maps and operational graphs for pond or
+pool test runs. These outputs make it easier to compare water-quality conditions
+across location, depth, and time.
+
+## Repository Layout
+
+```text
+aquascan-relay/          Cloudflare Worker relay for public WebSocket control
+docs/images/             GitHub README images
+EngineeringDesignAQUASCAN/
+                         engineering design boards, photos, and analysis assets
+Firmware/                ESP32 and Arduino sketches
+ML/                      Python training, data loading, tests, exported artifacts
+PortfolioAreaGraphs/     generated pond-area sensor maps
+PortfolioGraphs/         generated sensor and operations graphs
+Tools/                   portfolio graph and workbook generation scripts
+web/                     React/Vite dashboard and public project site
+```
+
+## Firmware
+
+Primary firmware entry points:
+
+- `Firmware/ESP32/AQUAScanESP32/AQUAScanESP32.ino`
+- `Firmware/ESP32/AQUAScanSensors/AQUAScanSensors.ino`
+- `Firmware/Arduino/AQUAScanEscBridge/AQUAScanEscBridge.ino`
+
+Live-control topology:
+
+```text
+web dashboard -> WebSocket -> ESP32 -> Serial2 -> Arduino Mega -> ESCs
+```
+
+Default control settings:
+
+- ESP32 WebSocket endpoint: `ws://<esp32-ip>:81/`
+- ESC neutral: `1500` microseconds
+- ESC reverse range: `1000-1499`
+- ESC forward range: `1501-2000`
+- command send rate: `20 Hz`
+- safety timeout: `300 ms`
+
+Before field testing, confirm Wi-Fi credentials, serial pin assignments, shared
+ground, neutral pulse output, and E-stop behavior with motors disconnected.
 
 ## ML Pipeline
 
@@ -104,7 +106,7 @@ The `ML/` folder trains a multi-task model from mission files and synthetic data
 ```powershell
 cd ML
 pip install -r requirements.txt
-python -m aquascan_ml.train --epochs 3 --synthetic-missions 12 --mission-dir ..\Assets\StreamingAssets
+python -m aquascan_ml.train --epochs 3 --synthetic-missions 12 --mission-dir ..\web\public\missions
 ```
 
 Artifacts are written to `ML/artifacts/`, including:
@@ -122,32 +124,6 @@ cd ML
 pytest
 ```
 
-## Firmware
-
-Primary firmware entry points:
-
-- `Firmware/ESP32/AQUAScanESP32/AQUAScanESP32.ino`
-- `Firmware/ESP32/AQUAScanSensors/AQUAScanSensors.ino`
-- `Firmware/Arduino/AQUAScanEscBridge/AQUAScanEscBridge.ino`
-
-The live-control topology is:
-
-```text
-Unity or web dashboard -> WebSocket -> ESP32 -> Serial2 -> Arduino Mega -> ESCs
-```
-
-Default control settings:
-
-- ESP32 WebSocket endpoint: `ws://<esp32-ip>:81/`
-- ESC neutral: `1500` microseconds
-- ESC reverse range: `1000-1499`
-- ESC forward range: `1501-2000`
-- command send rate: `20 Hz`
-- safety timeout: `300 ms`
-
-Before field testing, confirm Wi-Fi credentials, serial pin assignments, shared
-ground, neutral pulse output, and E-stop behavior with motors disconnected.
-
 ## Mission Data
 
 CSV missions should include:
@@ -156,53 +132,8 @@ CSV missions should include:
 timestamp,latitude,longitude,temperature,ph,do,salinity,tds,conductivity,turbidity,light,uv,depth,heading,speed,battery
 ```
 
-JSON missions use a `missionName` and `samples` array. Each sample includes
-timestamp, latitude, longitude, and a `metrics` object:
-
-```json
-{
-  "missionName": "Demo JSON Mission",
-  "samples": [
-    {
-      "timestamp": "2025-01-01T12:00:00Z",
-      "latitude": 37.4251,
-      "longitude": -122.0841,
-      "metrics": {
-        "temperature": 16.2,
-        "ph": 7.5,
-        "do": 8.4,
-        "tds": 320,
-        "turbidity": 5.0,
-        "light": 980,
-        "uv": 1.8
-      }
-    }
-  ]
-}
-```
-
-Default visualization metrics include temperature, pH, dissolved oxygen,
-salinity, total dissolved solids, conductivity, turbidity, light, ultraviolet,
-depth, speed, and battery.
-
-## Validation
-
-Recommended checks before sharing changes:
-
-```powershell
-# Unity
-# Run EditMode tests in the Unity Test Runner.
-
-# Web
-cd web
-npm run test
-npm run build
-npm run lint
-
-# ML
-cd ..\ML
-pytest
-```
+JSON missions use a `missionName` and `samples` array. Each sample includes a
+timestamp, latitude, longitude, and `metrics` object.
 
 ## Safety Notes
 
