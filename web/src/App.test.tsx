@@ -126,7 +126,7 @@ describe('App dashboard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /plan/i }))
     await waitFor(() => expect(screen.getByText('Upload protocol')).toBeInTheDocument())
-    expect(screen.getByText(/Protocol preview only/i)).toBeInTheDocument()
+    expect(screen.getByText(/Connect in live mode to upload this route to hardware/i)).toBeInTheDocument()
     expect(screen.getByText(/mission_upload_begin/i)).toBeInTheDocument()
   })
 

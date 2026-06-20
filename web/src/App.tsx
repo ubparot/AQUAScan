@@ -78,11 +78,44 @@ type OperatorAlert = {
   detail: string
 }
 
+type BluetoothRemoteGattCharacteristicLike = {
+  writeValue(value: BufferSource): Promise<void>
+  readValue?: () => Promise<DataView>
+}
+
+type BluetoothRemoteGattServiceLike = {
+  getCharacteristic(characteristic: string): Promise<BluetoothRemoteGattCharacteristicLike>
+}
+
+type BluetoothRemoteGattServerLike = {
+  getPrimaryService(service: string): Promise<BluetoothRemoteGattServiceLike>
+}
+
+type BluetoothDeviceLike = {
+  gatt?: {
+    connect(): Promise<BluetoothRemoteGattServerLike>
+  }
+}
+
+type BluetoothNavigator = Navigator & {
+  bluetooth?: {
+    requestDevice(options: {
+      filters: Array<{ namePrefix: string }>
+      optionalServices: string[]
+    }): Promise<BluetoothDeviceLike>
+  }
+}
+
 const defaultLayers: LayerVisibility = {
   track: true,
   points: true,
   heatmap: true,
 }
+
+const bleProvisioningNamePrefix = 'AQUAScan-Setup'
+const bleProvisioningServiceUuid = '91b6d6f0-27d6-4a63-9f3d-4f3b5412b7d0'
+const bleProvisioningConfigCharacteristicUuid = '91b6d6f1-27d6-4a63-9f3d-4f3b5412b7d0'
+const bleProvisioningStatusCharacteristicUuid = '91b6d6f2-27d6-4a63-9f3d-4f3b5412b7d0'
 
 function App() {
   const [mission, setMission] = useState<AquaMission>()
@@ -1037,6 +1070,7 @@ function App() {
                       <Field label="Boat host" value={settings.host} onChange={(value) => setSettings({ ...settings, host: value })} />
                       <Field label="Port" type="number" value={settings.port} onChange={(value) => setSettings({ ...settings, port: Number(value) || 81 })} />
                     </div>
+                    <BleProvisioningPanel />
                   </>
                 )}
 
@@ -2334,6 +2368,80 @@ function Field({
       <span>{label}</span>
       <input type={type} step={step} value={value} onChange={(event) => onChange(event.target.value)} />
     </label>
+  )
+}
+
+function BleProvisioningPanel() {
+  const bluetooth = (navigator as BluetoothNavigator).bluetooth
+  const supported = Boolean(bluetooth)
+  const [ssid, setSsid] = useState('')
+  const [password, setPassword] = useState('')
+  const [status, setStatus] = useState(supported ? 'Ready to send Wi-Fi credentials over BLE.' : 'Web Bluetooth is not available in this browser.')
+  const [busy, setBusy] = useState(false)
+
+  const provisionWifi = async () => {
+    const trimmedSsid = ssid.trim()
+    if (!bluetooth) {
+      setStatus('Use Chrome or Edge on desktop or Android for BLE provisioning.')
+      return
+    }
+    if (trimmedSsid.length === 0 || trimmedSsid.length > 32) {
+      setStatus('SSID must be 1-32 characters.')
+      return
+    }
+    if (password.length > 63) {
+      setStatus('Password must be 63 characters or less.')
+      return
+    }
+
+    setBusy(true)
+    setStatus(`Select ${bleProvisioningNamePrefix}-XXXX from the browser picker.`)
+    try {
+      const device = await bluetooth.requestDevice({
+        filters: [{ namePrefix: bleProvisioningNamePrefix }],
+        optionalServices: [bleProvisioningServiceUuid],
+      })
+      const server = await device.gatt?.connect()
+      if (!server) throw new Error('Could not open BLE GATT connection.')
+      const service = await server.getPrimaryService(bleProvisioningServiceUuid)
+      const configCharacteristic = await service.getCharacteristic(bleProvisioningConfigCharacteristicUuid)
+      await configCharacteristic.writeValue(new TextEncoder().encode(JSON.stringify({ ssid: trimmedSsid, password })))
+
+      let deviceStatus = 'Credentials sent. The ESP32 will reconnect and come back through the relay if the network is reachable.'
+      try {
+        const statusCharacteristic = await service.getCharacteristic(bleProvisioningStatusCharacteristicUuid)
+        const statusValue = await statusCharacteristic.readValue?.()
+        if (statusValue) deviceStatus = new TextDecoder().decode(statusValue)
+      } catch {
+        // Status readback is best-effort; the write is the important operation.
+      }
+      setStatus(deviceStatus)
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'BLE provisioning failed.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="ble-provisioning-panel">
+      <div className="mission-tools-header">
+        <div>
+          <p className="eyebrow">BLE provisioning</p>
+          <h3>ESP32 Wi-Fi recovery</h3>
+        </div>
+        <StatusPill icon={<Radio size={15} />} label={supported ? 'BLE ready' : 'Unsupported'} tone={supported ? 'good' : 'warn'} />
+      </div>
+      <div className="form-grid">
+        <Field label="Wi-Fi SSID" value={ssid} onChange={setSsid} />
+        <Field label="Wi-Fi password" type="password" value={password} onChange={setPassword} />
+      </div>
+      <button className="primary-button compact-button" disabled={!supported || busy} onClick={() => void provisionWifi()}>
+        <Radio size={16} />
+        {busy ? 'Provisioning' : 'Send Wi-Fi'}
+      </button>
+      <p className="status-copy">{status}</p>
+    </section>
   )
 }
 

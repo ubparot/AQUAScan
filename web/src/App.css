@@ -583,6 +583,7 @@ select {
 .scene-frame,
 .scene-empty,
 .simulator-toggle,
+.ble-provisioning-panel,
 .operator-alert-banner,
 .upload-protocol-panel {
   border-radius: var(--ui-radius);
@@ -918,9 +919,22 @@ select:focus {
 .app-shell[data-theme='light'] .wizard-panel,
 .app-shell[data-theme='light'] .run-panel,
 .app-shell[data-theme='light'] .review-panel,
-.app-shell[data-theme='light'] .model-controls-card {
+.app-shell[data-theme='light'] .model-controls-card,
+.app-shell[data-theme='light'] .ble-provisioning-panel {
   border-color: rgba(38, 97, 105, 0.16);
   background: rgba(247, 252, 252, 0.84);
+}
+
+.ble-provisioning-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(125, 150, 147, 0.18);
+  background: rgba(16, 24, 25, 0.78);
+}
+
+.ble-provisioning-panel .primary-button {
+  width: 100%;
 }
 
 .compact-layer-list {

@@ -36,6 +36,12 @@ route at `ws://192.168.4.1:81/`. Loading the website and connecting to the boat
 are separate network connections. The operator device must also have a route to
 the ESP access point before live control will work.
 
+The Setup tab includes BLE provisioning for the boat ESP32. When the ESP32 is in
+fallback mode, it advertises as `AQUAScan-Setup-XXXX`; Chrome or Edge can connect
+from the deployed site and write router Wi-Fi credentials without joining the ESP
+access point. iOS Safari does not support this Web Bluetooth flow, so keep AP
+setup available as the fallback path.
+
 ## Firebase Backend Setup
 
 The `/control` route uses Firebase Authentication and Cloud Firestore. The code
