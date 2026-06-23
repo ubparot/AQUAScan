@@ -134,38 +134,28 @@
   min-height: 610px;
   border-radius: 38% 8% 38% 8%;
   overflow: hidden;
-  background:
-    linear-gradient(rgba(255,255,255,.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.07) 1px, transparent 1px),
-    radial-gradient(circle at 50% 50%, #08559f, #06428e 68%, #02285c);
-  background-size: 42px 42px, 42px 42px, auto;
+  background: #02285c;
   box-shadow: 0 40px 100px rgba(2, 40, 92, 0.28);
 }
-.sonar-ring { position: absolute; border: 1px solid rgba(78, 182, 239, 0.28); border-radius: 50%; }
-.sonar-ring-one { width: 390px; height: 390px; left: calc(50% - 195px); top: calc(50% - 195px); }
-.sonar-ring-two { width: 250px; height: 250px; left: calc(50% - 125px); top: calc(50% - 125px); }
-.hero-map-line { position: absolute; height: 2px; transform-origin: left center; background: repeating-linear-gradient(90deg, rgba(78,182,239,.8) 0 7px, transparent 7px 13px); }
-.route-one { width: 220px; left: 15%; top: 24%; transform: rotate(23deg); }
-.route-two { width: 270px; left: 47%; top: 44%; transform: rotate(-35deg); }
-.hero-map-point { position: absolute; width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.55); border-radius: 50%; color: white; background: rgba(2,29,68,.72); box-shadow: 0 0 0 8px rgba(255,255,255,.08); }
-.hero-map-point span { font-size: 8px; font-weight: 900; }
-.point-one { left: 12%; top: 21%; }.point-two { right: 25%; top: 34%; }.point-three { right: 12%; bottom: 20%; }
-
-.vessel-card { position: absolute; left: calc(50% - 80px); top: calc(50% - 105px); width: 160px; height: 210px; filter: drop-shadow(0 22px 18px rgba(0,0,0,.28)); transform: rotate(-16deg); }
-.vessel-top { position: absolute; z-index: 3; top: 44px; left: 45px; width: 70px; height: 90px; display: flex; justify-content: space-between; padding: 8px; border-radius: 20px; background: #168ed1; }
-.vessel-top span { width: 8px; height: 70px; border-radius: 5px; background: #02285c; }
-.vessel-deck { position: absolute; z-index: 4; top: 66px; left: 59px; width: 42px; height: 45px; display: grid; place-items: center; color: #168ed1; background: #021d44; }
-.vessel-hull { position: absolute; top: 16px; width: 39px; height: 176px; border-radius: 50% 50% 38% 38%; background: #f0f7f5; }
-.hull-left { left: 17px; }.hull-right { right: 17px; }
-.probe-line { position: absolute; z-index: 5; left: 79px; top: 118px; width: 2px; height: 125px; background: rgba(213,237,229,.72); }
-.probe-line span { position: absolute; left: -5px; bottom: -11px; width: 12px; height: 27px; border-radius: 8px; background: #168ed1; }
-.visual-readout { position: absolute; min-width: 145px; display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; padding: 12px; border: 1px solid rgba(255,255,255,.15); border-radius: 8px; color: white; background: rgba(2,29,68,.82); backdrop-filter: blur(12px); }
-.visual-readout svg { grid-row: span 2; color: #4eb6ef; }
-.visual-readout span { font-size: 8px; letter-spacing: .08em; text-transform: uppercase; opacity: .65; }
-.visual-readout strong { font-size: 11px; }
-.readout-position { left: 5%; bottom: 12%; }.readout-sensor { right: 5%; top: 12%; }
-.visual-status { position: absolute; top: 7%; left: 18%; display: flex; align-items: center; gap: 7px; color: white; font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
-.visual-status span { width: 7px; height: 7px; border-radius: 50%; background: #4eb6ef; box-shadow: 0 0 0 5px rgba(22,142,209,.18); }
+.hero-visual::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(2, 29, 68, 0.16), transparent 35%, rgba(2, 29, 68, 0.3)),
+    linear-gradient(90deg, rgba(2, 29, 68, 0.34), transparent 42%, rgba(2, 29, 68, 0.2));
+  pointer-events: none;
+}
+.hero-video {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+}
 
 .site-section { padding: 110px clamp(22px, 7vw, 108px); }
 .section-heading-block { max-width: 720px; margin-bottom: 48px; }
@@ -496,7 +486,6 @@
   .hero-section { min-height: auto; padding: 70px 18px; }
   .hero-copy h1, .page-hero h1 { font-size: clamp(42px, 13vw, 62px); }
   .hero-visual { min-height: 410px; border-radius: 20px; }
-  .readout-position { display: none; }
   .site-section { padding: 75px 18px; }
   .workflow-grid, .tech-grid, .use-grid, .system-band, .about-grid { grid-template-columns: 1fr; }
   .system-band { gap: 40px; }

@@ -349,24 +349,18 @@ function HomePage({ navigate }: { navigate: (page: SitePage) => void }) {
           </div>
         </div>
 
-        <div className="hero-visual" aria-label="AQUAScan system overview illustration">
-          <div className="sonar-ring sonar-ring-one" />
-          <div className="sonar-ring sonar-ring-two" />
-          <div className="hero-map-line route-one" />
-          <div className="hero-map-line route-two" />
-          <div className="hero-map-point point-one"><span>01</span></div>
-          <div className="hero-map-point point-two"><span>02</span></div>
-          <div className="hero-map-point point-three"><span>03</span></div>
-          <div className="vessel-card">
-            <div className="vessel-top"><span /><span /></div>
-            <div className="vessel-deck"><Satellite size={25} /></div>
-            <div className="vessel-hull hull-left" />
-            <div className="vessel-hull hull-right" />
-            <div className="probe-line"><span /></div>
-          </div>
-          <div className="visual-readout readout-position"><MapPin size={15} /><span>Target waypoint</span><strong>42.318° N</strong></div>
-          <div className="visual-readout readout-sensor"><Activity size={15} /><span>Water profile</span><strong>7 metrics live</strong></div>
-          <div className="visual-status"><span /> System connected</div>
+        <div className="hero-visual" aria-label="AQUAScan vessel operating on water">
+          <video
+            className="hero-video"
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            poster="/media/aquascan-hero-poster.jpg"
+          >
+            <source src="/media/aquascan-hero.mp4" type="video/mp4" />
+          </video>
         </div>
       </section>
 
