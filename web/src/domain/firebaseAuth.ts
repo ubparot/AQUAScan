@@ -41,8 +41,17 @@ const provider = new GoogleAuthProvider()
 provider.setCustomParameters({ prompt: 'select_account' })
 
 export const allowedControlIdentities = parseAllowedIdentities(import.meta.env.VITE_AQUASCAN_ALLOWED_EMAILS)
+export const acceptsAnyControlEmail = import.meta.env.PROD || allowedControlIdentities.includes('*')
+const localAuthBypassUser: ControlAuthUser = {
+  uid: 'local-dev-operator',
+  email: 'local-operator@aquascan.dev',
+  name: 'Local operator',
+  providerId: 'local-dev',
+}
 
 export function getControlAuthSetupIssues() {
+  if (isLocalAuthBypassEnabled()) return []
+
   const missingConfig = requiredFirebaseKeys.filter((key) => !String(firebaseConfig[key] ?? '').trim())
   const issues: string[] = []
 
@@ -50,7 +59,7 @@ export function getControlAuthSetupIssues() {
     issues.push(`Missing Firebase env vars: ${missingConfig.map((key) => envNameForFirebaseKey(key)).join(', ')}`)
   }
 
-  if (allowedControlIdentities.length === 0) {
+  if (!acceptsAnyControlEmail && allowedControlIdentities.length === 0) {
     issues.push('Missing VITE_AQUASCAN_ALLOWED_EMAILS allowlist')
   }
 
@@ -64,6 +73,7 @@ export function isControlAuthConfigured() {
 export function isEmailAllowed(email: string | null | undefined) {
   const normalizedEmail = email?.trim().toLowerCase()
   if (!normalizedEmail) return false
+  if (acceptsAnyControlEmail) return true
 
   return allowedControlIdentities.some((identity) => {
     if (identity.startsWith('@')) return normalizedEmail.endsWith(identity)
@@ -72,6 +82,11 @@ export function isEmailAllowed(email: string | null | undefined) {
 }
 
 export function subscribeToControlAuth(onChange: (state: ControlAuthState) => void) {
+  if (isLocalAuthBypassEnabled()) {
+    onChange({ ready: true, user: localAuthBypassUser })
+    return () => undefined
+  }
+
   if (!isControlAuthConfigured()) {
     onChange({ ready: true, user: null, error: 'Firebase authentication is not configured.' })
     return () => undefined
@@ -148,6 +163,7 @@ export async function sendEmailPasswordReset(email: string) {
 }
 
 export async function signOutOfGoogle() {
+  if (isLocalAuthBypassEnabled()) return
   if (!isControlAuthConfigured()) return
   await signOut(getFirebaseAuth())
 }
@@ -235,4 +251,11 @@ function envNameForFirebaseKey(key: keyof FirebaseOptions) {
     default:
       return String(key)
   }
+}
+
+function isLocalAuthBypassEnabled() {
+  if (import.meta.env.PROD || import.meta.env.VITE_AQUASCAN_DISABLE_LOCAL_AUTH !== 'true') return false
+  if (typeof window === 'undefined') return false
+
+  return ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
 }

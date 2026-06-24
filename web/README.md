@@ -75,11 +75,23 @@ VITE_FIREBASE_PROJECT_ID=...
 VITE_FIREBASE_STORAGE_BUCKET=...
 VITE_FIREBASE_MESSAGING_SENDER_ID=...
 VITE_FIREBASE_APP_ID=...
-VITE_AQUASCAN_ALLOWED_EMAILS=you@gmail.com,teammate@gmail.com
+VITE_AQUASCAN_ALLOWED_EMAILS=*
 ```
 
 `VITE_AQUASCAN_ALLOWED_EMAILS` accepts comma- or space-separated exact email
-addresses. Domain entries such as `@school.edu` are also supported.
+addresses. Domain entries such as `@school.edu` are also supported. Use `*` to
+allow every signed-in email. Production builds allow every signed-in email even
+when the variable is empty or set to a narrower list.
+
+For local dashboard development only, auth can be bypassed on `localhost`,
+`127.0.0.1`, or `::1` while running the Vite dev server:
+
+```text
+VITE_AQUASCAN_DISABLE_LOCAL_AUTH=true
+```
+
+The bypass is ignored in production builds. A live relay may still require a real
+Firebase operator token before accepting boat-control commands.
 
 Deploy the included Firestore rules after Firebase login/setup:
 

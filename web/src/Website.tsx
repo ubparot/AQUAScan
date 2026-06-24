@@ -257,7 +257,7 @@ function ControlAuthGate({ children, onBack }: { children: (logout: () => void, 
           </div>
         )}
         <p className="auth-note">
-          Access is limited by <code>VITE_AQUASCAN_ALLOWED_EMAILS</code>. The boat relay should also verify the same
+          Production access accepts any Firebase-authenticated email. The boat relay should still verify the same
           Google/Firebase token before accepting motor commands.
         </p>
       </section>
