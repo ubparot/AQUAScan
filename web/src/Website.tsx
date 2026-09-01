@@ -3,9 +3,11 @@ import {
   ArrowRight,
   BarChart3,
   BatteryCharging,
+  Building2,
   ChevronRight,
+  CircleHelp,
   Database,
-  Gauge,
+  Handshake,
   Layers3,
   LockKeyhole,
   LogIn,
@@ -23,6 +25,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import App from './App'
+import MarisLab from './MarisLab'
 import {
   createEmailAccount,
   getControlAuthSetupIssues,
@@ -35,30 +38,45 @@ import {
 } from './domain/firebaseAuth'
 import './Website.css'
 
-type SitePage = 'home' | 'technology' | 'impact' | 'about' | 'control'
+type SitePage = 'home' | 'products' | 'applications' | 'company' | 'news' | 'contact' | 'privacy' | 'terms' | 'control' | 'maris'
 
 const pagePaths: Record<SitePage, string> = {
   home: '/',
-  technology: '/technology',
-  impact: '/impact',
-  about: '/about',
+  products: '/products',
+  applications: '/applications',
+  company: '/company',
+  news: '/news',
+  contact: '/contact',
+  privacy: '/privacy',
+  terms: '/terms',
   control: '/control',
+  maris: '/maris',
 }
 
 const pageTitles: Record<SitePage, string> = {
-  home: 'AQUAScan | Mobile Water-Quality Monitoring',
-  technology: 'Technology | AQUAScan',
-  impact: 'Impact | AQUAScan',
-  about: 'About | AQUAScan',
-  control: 'Live Control | AQUAScan',
+  home: 'AquaLabs LLC | Aquatic Technology from Chesapeake, Virginia',
+  products: 'Products | AquaLabs LLC',
+  applications: 'Applications | AquaLabs LLC',
+  company: 'Company | AquaLabs LLC',
+  news: 'News | AquaLabs LLC',
+  contact: 'Contact | AquaLabs LLC',
+  privacy: 'Privacy Policy | AquaLabs LLC',
+  terms: 'Terms of Use | AquaLabs LLC',
+  control: 'AquaScan Live Control | AquaLabs LLC',
+  maris: 'Maris by AquaScan | AquaLabs LLC',
 }
 
 function pageFromPath(pathname: string): SitePage {
   const path = pathname.replace(/\/+$/, '') || '/'
   if (path === '/control') return 'control'
-  if (path === '/technology') return 'technology'
-  if (path === '/impact') return 'impact'
-  if (path === '/about') return 'about'
+  if (path === '/maris') return 'maris'
+  if (path === '/products' || path === '/technology') return 'products'
+  if (path === '/applications' || path === '/impact') return 'applications'
+  if (path === '/company' || path === '/about') return 'company'
+  if (path === '/news') return 'news'
+  if (path === '/contact') return 'contact'
+  if (path === '/privacy') return 'privacy'
+  if (path === '/terms') return 'terms'
   return 'home'
 }
 
@@ -95,7 +113,7 @@ function Website() {
                 </span>
                 <button className="control-back" type="button" onClick={() => navigate('home')}>
                   <Waves size={18} />
-                  AQUAScan site
+                  AquaLabs site
                 </button>
                 <button className="control-logout" type="button" onClick={logout}>
                   <LockKeyhole size={17} />
@@ -106,6 +124,14 @@ function Website() {
             </>
           )}
         </ControlAuthGate>
+      </div>
+    )
+  }
+
+  if (page === 'maris') {
+    return (
+      <div className="maris-route">
+        <MarisLab />
       </div>
     )
   }
@@ -197,11 +223,10 @@ function ControlAuthGate({ children, onBack }: { children: (logout: () => void, 
     <main className="auth-screen">
       <button className="auth-back" type="button" onClick={onBack}>
         <Waves size={18} />
-        Back to AQUAScan site
+        Back to AquaLabs site
       </button>
       <section className="auth-card" aria-labelledby="control-auth-title">
         <div className="auth-icon"><ShieldCheck size={34} /></div>
-        <p className="site-kicker"><span /> Operator access</p>
         <h1 id="control-auth-title">Sign in to live control.</h1>
         <p>
           Use an approved Google account before opening the dashboard. Public project pages remain available without
@@ -257,7 +282,7 @@ function ControlAuthGate({ children, onBack }: { children: (logout: () => void, 
           </div>
         )}
         <p className="auth-note">
-          Production access accepts any Firebase-authenticated email. The boat relay should still verify the same
+          Access is limited by <code>VITE_AQUASCAN_ALLOWED_EMAILS</code>. The boat relay should also verify the same
           Google/Firebase token before accepting motor commands.
         </p>
       </section>
@@ -265,7 +290,7 @@ function ControlAuthGate({ children, onBack }: { children: (logout: () => void, 
   )
 }
 
-function MarketingSite({ page, navigate }: { page: Exclude<SitePage, 'control'>; navigate: (page: SitePage) => void }) {
+function MarketingSite({ page, navigate }: { page: Exclude<SitePage, 'control' | 'maris'>; navigate: (page: SitePage) => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const go = (nextPage: SitePage) => {
     setMenuOpen(false)
@@ -275,20 +300,22 @@ function MarketingSite({ page, navigate }: { page: Exclude<SitePage, 'control'>;
   return (
     <div className="site-shell">
       <header className="site-header">
-        <button className="site-brand" type="button" onClick={() => go('home')} aria-label="AQUAScan home">
-          <img src="/aquascan-logo.png" alt="AQUAScan" />
+        <button className="site-brand company-brand" type="button" onClick={() => go('home')} aria-label="AquaLabs LLC home">
+          <span className="company-mark"><Waves size={24} /></span>
+          <span><strong>AquaLabs</strong><small>LLC</small></span>
         </button>
 
         <nav className="site-nav" aria-label="Main navigation">
           <SiteNavButton label="Home" active={page === 'home'} onClick={() => go('home')} />
-          <SiteNavButton label="Technology" active={page === 'technology'} onClick={() => go('technology')} />
-          <SiteNavButton label="Impact" active={page === 'impact'} onClick={() => go('impact')} />
-          <SiteNavButton label="About" active={page === 'about'} onClick={() => go('about')} />
+          <SiteNavButton label="Products" active={page === 'products'} onClick={() => go('products')} />
+          <SiteNavButton label="Applications" active={page === 'applications'} onClick={() => go('applications')} />
+          <SiteNavButton label="Company" active={page === 'company'} onClick={() => go('company')} />
+          <SiteNavButton label="News" active={page === 'news'} onClick={() => go('news')} />
         </nav>
 
-        <button className="site-control-button" type="button" onClick={() => go('control')}>
-          <Radio size={17} />
-          Open live control
+        <button className="site-control-button" type="button" onClick={() => go('contact')}>
+          <Mail size={17} />
+          Contact us
         </button>
 
         <button className="mobile-menu-button" type="button" aria-label="Toggle navigation" onClick={() => setMenuOpen(!menuOpen)}>
@@ -298,26 +325,50 @@ function MarketingSite({ page, navigate }: { page: Exclude<SitePage, 'control'>;
         {menuOpen && (
           <nav className="mobile-site-nav" aria-label="Mobile navigation">
             <SiteNavButton label="Home" active={page === 'home'} onClick={() => go('home')} />
-            <SiteNavButton label="Technology" active={page === 'technology'} onClick={() => go('technology')} />
-            <SiteNavButton label="Impact" active={page === 'impact'} onClick={() => go('impact')} />
-            <SiteNavButton label="About" active={page === 'about'} onClick={() => go('about')} />
+            <SiteNavButton label="Products" active={page === 'products'} onClick={() => go('products')} />
+            <SiteNavButton label="Applications" active={page === 'applications'} onClick={() => go('applications')} />
+            <SiteNavButton label="Company" active={page === 'company'} onClick={() => go('company')} />
+            <SiteNavButton label="News" active={page === 'news'} onClick={() => go('news')} />
             <button className="site-control-button" type="button" onClick={() => go('control')}>
               <Radio size={17} />
-              Open live control
+              AquaScan control
+            </button>
+            <button className="site-demo-button" type="button" onClick={() => go('maris')}>
+              <BarChart3 size={17} />
+              Maris demo
+            </button>
+            <button className="site-control-button" type="button" onClick={() => go('contact')}>
+              <Mail size={17} />
+              Contact us
             </button>
           </nav>
         )}
       </header>
 
       {page === 'home' && <HomePage navigate={go} />}
-      {page === 'technology' && <TechnologyPage navigate={go} />}
-      {page === 'impact' && <ImpactPage navigate={go} />}
-      {page === 'about' && <AboutPage navigate={go} />}
+      {page === 'products' && <ProductsPage navigate={go} />}
+      {page === 'applications' && <ApplicationsPage navigate={go} />}
+      {page === 'company' && <CompanyPage navigate={go} />}
+      {page === 'news' && <NewsPage navigate={go} />}
+      {page === 'contact' && <ContactPage navigate={go} />}
+      {page === 'privacy' && <PrivacyPage />}
+      {page === 'terms' && <TermsPage />}
 
       <footer className="site-footer">
-        <div className="site-brand footer-brand"><img src="/aquascan-logo.png" alt="AQUAScan" /></div>
-        <p>A semi-autonomous platform connecting navigation, depth-aware sampling, and scientific visualization.</p>
-        <button type="button" onClick={() => go('control')}>Operator interface <ArrowRight size={16} /></button>
+        <div className="footer-company">
+          <div className="company-brand"><span className="company-mark"><Waves size={22} /></span><span><strong>AquaLabs</strong><small>LLC</small></span></div>
+          <p>Aquatic technology built in Chesapeake, Virginia.</p>
+        </div>
+        <div className="footer-links" aria-label="Footer navigation">
+          <button type="button" onClick={() => go('products')}>Products</button>
+          <button type="button" onClick={() => go('applications')}>Applications</button>
+          <button type="button" onClick={() => go('company')}>Company</button>
+          <button type="button" onClick={() => go('news')}>News</button>
+          <button type="button" onClick={() => go('contact')}>Contact</button>
+          <button type="button" onClick={() => go('privacy')}>Privacy</button>
+          <button type="button" onClick={() => go('terms')}>Terms</button>
+        </div>
+        <p className="footer-legal">© {new Date().getFullYear()} AquaLabs LLC. All rights reserved.</p>
       </footer>
     </div>
   )
@@ -328,82 +379,77 @@ function HomePage({ navigate }: { navigate: (page: SitePage) => void }) {
     <main>
       <section className="hero-section">
         <div className="hero-copy">
-          <p className="site-kicker"><span /> Mobile environmental monitoring</p>
-          <h1>See more of the water.<br /><em>Understand what changes.</em></h1>
+          <h1>Technology for a clearer view <em>of the water.</em></h1>
           <p className="hero-lede">
-            AQUAScan is a semi-autonomous surface vessel built to collect water-quality data across location and depth,
-            turning field measurements into clear, connected environmental insight.
+            AquaLabs develops practical tools that connect aquatic fieldwork, sensing, and data. Our first product,
+            AquaScan, is a mobile platform for understanding water conditions across location and depth.
           </p>
           <div className="hero-actions">
-            <button className="site-primary-button" type="button" onClick={() => navigate('technology')}>
-              Explore the system <ArrowRight size={18} />
+            <button className="site-primary-button" type="button" onClick={() => navigate('products')}>
+              Explore AquaScan <ArrowRight size={18} />
             </button>
-            <button className="site-secondary-button" type="button" onClick={() => navigate('control')}>
-              <ShipWheel size={18} /> Open live control
+            <button className="site-secondary-button" type="button" onClick={() => navigate('company')}>
+              <Building2 size={18} /> About AquaLabs
             </button>
           </div>
           <div className="hero-proof">
-            <span><strong>GPS</strong> guided missions</span>
-            <span><strong>Multi-depth</strong> sampling</span>
-            <span><strong>Live</strong> data visualization</span>
+            <span><strong>AquaScan</strong> in development</span>
+            <span><strong>Virginia</strong> based</span>
+            <span><strong>Field-first</strong> engineering</span>
           </div>
         </div>
 
-        <div className="hero-visual" aria-label="AQUAScan vessel operating on water">
+        <div className="hero-video-panel">
           <video
             className="hero-video"
+            src="/media/aquascan-hero.mp4"
+            poster="/media/aquascan-hero-poster.jpg"
             autoPlay
             loop
             muted
             playsInline
-            preload="metadata"
-            poster="/media/aquascan-hero-poster.jpg"
-          >
-            <source src="/media/aquascan-hero.mp4" type="video/mp4" />
-          </video>
+            aria-label="AquaScan vessel field video"
+          />
         </div>
       </section>
 
       <section className="site-section intro-section">
         <div className="section-heading-block">
-          <p className="site-kicker"><span /> One connected workflow</p>
-          <h2>From mission plan to usable science</h2>
-          <p>AQUAScan brings vessel operation, sensor collection, and data interpretation into one platform.</p>
+          <h2>From difficult fieldwork to useful insight</h2>
+          <p>We design connected aquatic systems around the full journey from collection to understanding.</p>
         </div>
         <div className="workflow-grid">
-          <FeatureCard number="01" icon={<Route />} title="Navigate" copy="Drive manually or guide the vessel toward selected GPS sampling locations." />
-          <FeatureCard number="02" icon={<Layers3 />} title="Sample" copy="Collect environmental readings tied to position, time, and depth through the water column." />
-          <FeatureCard number="03" icon={<BarChart3 />} title="Understand" copy="Review mapped measurements, charts, heat maps, mission replays, and exportable records." />
+          <FeatureCard number="01" icon={<Waves />} title="Aquatic systems" copy="Purpose-built tools for work on ponds, lakes, reservoirs, and other calm-water environments." />
+          <FeatureCard number="02" icon={<Activity />} title="Environmental sensing" copy="Measurements connected to place, time, and depth so field data retains its context." />
+          <FeatureCard number="03" icon={<BarChart3 />} title="Usable software" copy="Operator interfaces and visualizations that help turn complex missions into clear decisions." />
         </div>
       </section>
 
       <section className="site-section system-band">
         <div className="system-band-copy">
-          <p className="site-kicker light"><span /> Built for field awareness</p>
-          <h2>A live view of the vessel, mission, and environment.</h2>
+          <h2>Meet AquaScan.</h2>
           <p>
-            Operators can follow position, heading, motor output, connection health, mission progress, and sensor
-            readings while the vessel is operating.
+            A semi-autonomous surface vessel that connects navigation, depth-aware water-quality sampling, live
+            operations, and scientific visualization in one platform.
           </p>
-          <button type="button" onClick={() => navigate('control')}>Enter operator interface <ArrowRight size={17} /></button>
+          <button type="button" onClick={() => navigate('products')}>See the product <ArrowRight size={17} /></button>
         </div>
         <div className="metric-stack">
-          <MetricCard icon={<Gauge />} label="Mission status" value="Live" detail="Position and system health" />
-          <MetricCard icon={<Activity />} label="Sensor profile" value="Multi-depth" detail="Measurements linked to place" />
-          <MetricCard icon={<Database />} label="Data output" value="Structured" detail="Ready for analysis and export" />
+          <MetricCard icon={<Satellite />} label="Navigate" value="GPS guided" detail="Repeatable sampling locations" />
+          <MetricCard icon={<Layers3 />} label="Measure" value="Multi-depth" detail="Conditions through the water column" />
+          <MetricCard icon={<Database />} label="Understand" value="Connected" detail="Maps, charts, replays, and exports" />
         </div>
       </section>
 
       <section className="site-section use-section">
         <div className="section-heading-block">
-          <p className="site-kicker"><span /> Why AQUAScan</p>
-          <h2>Better coverage. Better context.</h2>
+          <h2>Built for teams working around water</h2>
         </div>
         <div className="use-grid">
-          <UseCard title="Spatial awareness" copy="Compare conditions across an area instead of relying on a single fixed reading." />
-          <UseCard title="Vertical insight" copy="Study how water-quality conditions change below the surface at selected locations." />
-          <UseCard title="Repeatable monitoring" copy="Return to known GPS points and compare measurements across missions." />
-          <UseCard title="Clear communication" copy="Turn complex field readings into maps, charts, layers, and reports." />
+          <UseCard title="Researchers" copy="Collect structured field measurements with location, depth, and mission context." />
+          <UseCard title="Educators" copy="Connect environmental science, robotics, mapping, and data analysis in the field." />
+          <UseCard title="Water managers" copy="Build repeatable monitoring workflows for managed aquatic environments." />
+          <UseCard title="Partners" copy="Explore pilots, integrations, and new applications for aquatic technology." />
         </div>
       </section>
 
@@ -412,10 +458,14 @@ function HomePage({ navigate }: { navigate: (page: SitePage) => void }) {
   )
 }
 
-function TechnologyPage({ navigate }: { navigate: (page: SitePage) => void }) {
+function ProductsPage({ navigate }: { navigate: (page: SitePage) => void }) {
   return (
     <main>
-      <PageHero kicker="The platform" title="One vessel. Four connected systems." copy="AQUAScan combines propulsion, navigation, deployable sensing, and a digital operator interface into a single environmental monitoring workflow." />
+      <PageHero title="AquaScan is where our product story begins." copy="AquaLabs' current product connects a semi-autonomous surface vessel, deployable sensing, live operations, and environmental data analysis." />
+      <section className="site-section product-overview">
+        <div className="product-lockup"><span className="status-badge">In development</span><img src="/aquascan-logo.png" alt="AquaScan" /><p>Mobile water-quality monitoring across location and depth.</p></div>
+        <div className="product-actions"><button className="site-secondary-button" type="button" onClick={() => navigate('maris')}><BarChart3 size={18} /> Open Maris demo</button><button className="site-secondary-button" type="button" onClick={() => navigate('control')}><ShipWheel size={18} /> Operator control</button></div>
+      </section>
       <section className="site-section tech-grid">
         <FeatureCard number="01" icon={<ShipWheel />} title="Vessel control" copy="Dual-motor differential steering supports direct manual operation and precise field adjustments." />
         <FeatureCard number="02" icon={<Satellite />} title="GPS navigation" copy="Selected sampling locations and mission routes connect measurements to repeatable positions." />
@@ -426,7 +476,6 @@ function TechnologyPage({ navigate }: { navigate: (page: SitePage) => void }) {
       </section>
       <section className="site-section process-section">
         <div className="section-heading-block">
-          <p className="site-kicker"><span /> Mission workflow</p>
           <h2>A direct path from field operation to analysis</h2>
         </div>
         <div className="process-list">
@@ -441,33 +490,29 @@ function TechnologyPage({ navigate }: { navigate: (page: SitePage) => void }) {
   )
 }
 
-function ImpactPage({ navigate }: { navigate: (page: SitePage) => void }) {
+function ApplicationsPage({ navigate }: { navigate: (page: SitePage) => void }) {
   return (
     <main>
-      <PageHero kicker="Environmental value" title="Monitoring that captures more than the surface." copy="Water conditions can change across short distances and throughout the water column. AQUAScan is designed to make those changes visible." />
+      <PageHero title="More context for work on and around the water." copy="AquaLabs is developing technology for teams that need to observe aquatic environments more clearly, repeatedly, and efficiently." />
       <section className="site-section impact-layout">
         <div className="impact-panel">
           <MapPin size={27} />
-          <p className="site-kicker"><span /> Location</p>
           <h2>Know where every reading came from.</h2>
           <p>GPS-linked measurements support repeatable fieldwork, clearer comparisons, and map-based interpretation.</p>
         </div>
         <div className="impact-panel impact-panel-dark">
           <Layers3 size={27} />
-          <p className="site-kicker light"><span /> Depth</p>
           <h2>Reveal conditions below the surface.</h2>
           <p>Depth-aware sampling helps identify vertical changes that surface-only measurements may miss.</p>
         </div>
         <div className="impact-panel impact-panel-accent">
           <BarChart3 size={27} />
-          <p className="site-kicker light"><span /> Time</p>
           <h2>Build a record that becomes more valuable.</h2>
           <p>Repeated missions create comparable datasets for studying trends and environmental change.</p>
         </div>
       </section>
       <section className="site-section use-section">
         <div className="section-heading-block">
-          <p className="site-kicker"><span /> Potential applications</p>
           <h2>Designed for calm-water monitoring missions</h2>
         </div>
         <div className="use-grid">
@@ -482,22 +527,20 @@ function ImpactPage({ navigate }: { navigate: (page: SitePage) => void }) {
   )
 }
 
-function AboutPage({ navigate }: { navigate: (page: SitePage) => void }) {
+function CompanyPage({ navigate }: { navigate: (page: SitePage) => void }) {
   return (
     <main>
-      <PageHero kicker="About AQUAScan" title="Engineering a clearer view of aquatic environments." copy="AQUAScan was developed as an integrated solution to a practical monitoring problem: environmental data becomes more useful when it is connected to location, depth, and a repeatable collection process." />
+      <PageHero title="Building practical technology for aquatic environments." copy="Based in Chesapeake, Virginia, AquaLabs brings together field engineering, sensing, robotics, and software to make water data easier to collect and understand." />
       <section className="site-section about-grid">
         <div className="about-story">
-          <p className="site-kicker"><span /> The idea</p>
-          <h2>Move the monitoring platform, not the sampling team.</h2>
+          <h2>Help people understand water with better tools.</h2>
           <p>
-            Traditional sampling can be time-consuming, difficult to repeat precisely, and limited in spatial or
-            depth coverage. AQUAScan brings the instruments to selected locations and organizes the resulting data
-            as part of the mission.
+            Aquatic fieldwork can be time-consuming, difficult to repeat, and disconnected from the software used to
+            interpret results. AquaLabs exists to close those gaps with systems designed around real field workflows.
           </p>
           <p>
-            The result is more than a remotely controlled boat. It is a connected environmental data-collection
-            platform designed around navigation, sampling, visualization, and reuse.
+            AquaScan is our first product and the foundation of a broader company vision: practical, connected aquatic
+            technology that helps researchers, educators, water managers, and partners work with greater context.
           </p>
         </div>
         <div className="principles-list">
@@ -507,12 +550,24 @@ function AboutPage({ navigate }: { navigate: (page: SitePage) => void }) {
           <MetricCard icon={<Database />} label="Principle 04" value="Usability" detail="Collected data should be ready for further work." />
         </div>
       </section>
+      <section className="site-section team-section">
+        <div className="section-heading-block">
+          <h2>The people building AquaLabs</h2>
+          <p>A multidisciplinary founding team spanning electronics, software, CAD, vessel and probe design, research, and organizational outreach.</p>
+        </div>
+        <div className="team-grid">
+          <TeamMember number="01" name="Aven Mitchell" role="Lead Electronics & Software" />
+          <TeamMember number="02" name="Aiden Russi" role="Co-Lead CAD and Probe Design" />
+          <TeamMember number="03" name="Skylar Cauntay" role="Co-Lead CAD and Vessel Design" />
+          <TeamMember number="04" name="Oliver Hathaway" role="Lead R&D" />
+          <TeamMember number="05" name="Hayden Wells" role="Lead Organizational Outreach" />
+        </div>
+      </section>
       <section className="site-section future-band">
         <BatteryCharging size={32} />
         <div>
-          <p className="site-kicker light"><span /> Continued development</p>
-          <h2>Built as a platform for refinement.</h2>
-          <p>Future work can expand autonomy, endurance, obstacle awareness, sensor capability, and long-term field validation.</p>
+          <h2>Local roots. Broad aquatic challenges.</h2>
+          <p>We are building from a region shaped by rivers, bays, wetlands, and the people who depend on them.</p>
         </div>
       </section>
       <CallToAction navigate={navigate} />
@@ -520,14 +575,97 @@ function AboutPage({ navigate }: { navigate: (page: SitePage) => void }) {
   )
 }
 
+function NewsPage({ navigate }: { navigate: (page: SitePage) => void }) {
+  return (
+    <main>
+      <PageHero title="Updates from AquaLabs." copy="Company news, AquaScan development notes, field progress, and future announcements from Chesapeake, Virginia." />
+      <section className="site-section news-layout">
+        <article className="news-feature">
+          <div className="news-meta"><span>Development update</span><span>Current</span></div>
+          <h2>AquaScan remains in active development.</h2>
+          <p>
+            AquaLabs is continuing work on the vessel, depth-aware sensing, mission control, and environmental data
+            experience that make up the AquaScan platform. The current website demonstrations share the direction of
+            the product while development and validation continue.
+          </p>
+          <button type="button" onClick={() => navigate('products')}>Explore the product <ArrowRight size={17} /></button>
+        </article>
+        <aside className="news-sidebar">
+          <h2>More updates as the work progresses.</h2>
+          <p>Future posts can cover field tests, product milestones, partnerships, demonstrations, and availability.</p>
+          <button type="button" onClick={() => navigate('contact')}>Talk with AquaLabs <ArrowRight size={17} /></button>
+        </aside>
+      </section>
+    </main>
+  )
+}
+
+function ContactPage({ navigate }: { navigate: (page: SitePage) => void }) {
+  return (
+    <main>
+      <PageHero title="Start a conversation with AquaLabs." copy="We welcome conversations about AquaScan, pilot opportunities, research and education, technical partnerships, and the future of aquatic monitoring." />
+      <section className="site-section contact-grid">
+        <article className="contact-card"><MapPin size={28} /><h2>Chesapeake, Virginia</h2><p>AquaLabs LLC is based in the Hampton Roads region of Virginia.</p></article>
+        <article className="contact-card contact-card-dark"><Handshake size={28} /><h2>Products, pilots, and partnerships</h2><p>Contact details will be added here once the company's preferred public email and phone information are confirmed.</p></article>
+        <article className="contact-card"><CircleHelp size={28} /><h2>Explore AquaScan now</h2><p>Learn about the product, open the public Maris demonstration, or sign in to the operator experience.</p><button type="button" onClick={() => navigate('products')}>View AquaScan <ArrowRight size={17} /></button></article>
+      </section>
+    </main>
+  )
+}
+
+function PrivacyPage() {
+  return (
+    <LegalPage title="Privacy Policy" intro="This policy explains how AquaLabs LLC handles information when you visit this website or use the restricted AquaScan operator experience.">
+      <LegalSection title="Information we receive">
+        <p>Public pages do not currently include a contact form. If you sign in to a restricted operator area, the authentication provider may supply account information such as your name, email address, profile image, provider, and account identifier.</p>
+        <p>The site and its service providers may also process basic technical information needed to deliver and secure the service, such as browser, device, network, and diagnostic information.</p>
+      </LegalSection>
+      <LegalSection title="How information is used"><p>Information is used to authenticate approved operators, provide requested functionality, maintain security, troubleshoot problems, and improve the AquaScan development experience.</p></LegalSection>
+      <LegalSection title="Storage and service providers"><p>Authentication is provided through Firebase and may use Google sign-in or email/password authentication. Some application preferences and development data may be stored on your device. Those providers may process information under their own terms and privacy policies.</p></LegalSection>
+      <LegalSection title="Sharing"><p>AquaLabs does not sell personal information. Information may be shared with service providers that operate the site, when required by law, or when necessary to protect the company, users, or the service.</p></LegalSection>
+      <LegalSection title="Data choices"><p>You may choose not to use restricted sign-in features. Requests concerning account information, correction, or deletion can be directed to AquaLabs once the public privacy contact address is published.</p></LegalSection>
+      <LegalSection title="Changes"><p>This policy may change as AquaScan develops and additional site features are introduced. Updates will be posted on this page with a revised effective date.</p></LegalSection>
+    </LegalPage>
+  )
+}
+
+function TermsPage() {
+  return (
+    <LegalPage title="Terms of Use" intro="These terms govern access to the AquaLabs LLC website, public demonstrations, and restricted AquaScan development tools.">
+      <LegalSection title="Development status"><p>AquaScan is in development. Demonstrations, specifications, interfaces, features, performance, availability, and other materials may change and should not be treated as a commercial offer or guarantee.</p></LegalSection>
+      <LegalSection title="Permitted use"><p>You may use public pages for informational purposes. Restricted operator features may be used only by authorized users and only for lawful, approved testing or operation.</p></LegalSection>
+      <LegalSection title="Accounts and security"><p>You are responsible for safeguarding your sign-in credentials and for activity performed through your account. Do not attempt to bypass access controls, interfere with the service, or send unauthorized commands to connected equipment.</p></LegalSection>
+      <LegalSection title="Safety"><p>Do not rely on this website, a demonstration, or development software as the sole basis for navigation, environmental, operational, regulatory, or safety decisions. Physical equipment must be operated by qualified people using appropriate procedures and supervision.</p></LegalSection>
+      <LegalSection title="Intellectual property"><p>The site, AquaLabs and AquaScan names, software, designs, graphics, text, and other materials are owned by AquaLabs LLC or their respective licensors unless otherwise stated. No rights are granted except the limited permission to use the site under these terms.</p></LegalSection>
+      <LegalSection title="No warranties and limitation"><p>The site and development materials are provided on an “as available” basis without warranties to the fullest extent permitted by law. AquaLabs LLC is not responsible for losses arising from reliance on development demonstrations or unauthorized use.</p></LegalSection>
+      <LegalSection title="Changes"><p>AquaLabs may update the site, suspend access, or revise these terms as the product and company evolve. Continued use after an update means the revised terms apply.</p></LegalSection>
+    </LegalPage>
+  )
+}
+
+function LegalPage({ title, intro, children }: { title: string; intro: string; children: ReactNode }) {
+  return (
+    <main>
+      <PageHero title={title} copy={intro} />
+      <article className="site-section legal-page">
+        <p className="legal-effective">Effective September 1, 2026</p>
+        {children}
+      </article>
+    </main>
+  )
+}
+
+function LegalSection({ title, children }: { title: string; children: ReactNode }) {
+  return <section><h2>{title}</h2>{children}</section>
+}
+
 function SiteNavButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return <button type="button" data-active={active} onClick={onClick}>{label}</button>
 }
 
-function PageHero({ kicker, title, copy }: { kicker: string; title: string; copy: string }) {
+function PageHero({ title, copy }: { title: string; copy: string }) {
   return (
     <section className="page-hero">
-      <p className="site-kicker light"><span /> {kicker}</p>
       <h1>{title}</h1>
       <p>{copy}</p>
     </section>
@@ -558,6 +696,18 @@ function UseCard({ title, copy }: { title: string; copy: string }) {
   return <article className="use-card"><span /><h3>{title}</h3><p>{copy}</p></article>
 }
 
+function TeamMember({ number, name, role }: { number: string; name: string; role: string }) {
+  const initials = name.split(' ').map((part) => part[0]).join('')
+  return (
+    <article className="team-card">
+      <div className="team-card-top"><span aria-hidden="true">{initials}</span><small>{number}</small></div>
+      <p>Founder</p>
+      <h3>{name}</h3>
+      <strong>{role}</strong>
+    </article>
+  )
+}
+
 function ProcessStep({ number, title, copy }: { number: string; title: string; copy: string }) {
   return <article className="process-step"><strong>{number}</strong><div><h3>{title}</h3><p>{copy}</p></div><ArrowRight size={19} /></article>
 }
@@ -566,11 +716,10 @@ function CallToAction({ navigate }: { navigate: (page: SitePage) => void }) {
   return (
     <section className="site-cta">
       <div>
-        <p className="site-kicker light"><span /> Explore the platform</p>
-        <h2>See the AQUAScan operator experience.</h2>
-        <p>Open the mission-control interface to explore vessel control, mission planning, sensor visualization, and data review.</p>
+        <h2>Let’s talk about what’s happening in the water.</h2>
+        <p>Start a conversation about AquaScan, research, education, field pilots, or technical partnerships.</p>
       </div>
-      <button type="button" onClick={() => navigate('control')}><Radio size={19} /> Open live control <ArrowRight size={18} /></button>
+      <button type="button" onClick={() => navigate('contact')}><Mail size={19} /> Contact AquaLabs <ArrowRight size={18} /></button>
     </section>
   )
 }

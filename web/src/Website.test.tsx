@@ -19,6 +19,10 @@ vi.mock('./App', () => ({
   default: () => <div data-testid="control-dashboard">Control dashboard</div>,
 }))
 
+vi.mock('./MarisLab', () => ({
+  default: () => <div data-testid="maris-dashboard">Maris lab</div>,
+}))
+
 vi.mock('./domain/firebaseAuth', () => ({
   createEmailAccount: authMock.createEmailAccount,
   getControlAuthSetupIssues: () => authMock.setupIssues,
@@ -57,6 +61,15 @@ describe('Website control authentication', () => {
     fireEvent.click(await screen.findByRole('button', { name: /continue with google/i }))
     expect(await screen.findByTestId('control-dashboard')).toBeInTheDocument()
     expect(screen.getByText('operator@example.com')).toBeInTheDocument()
+  })
+
+  it('renders the public Maris demo without authentication', () => {
+    window.history.pushState({}, '', '/maris')
+    render(<Website />)
+
+    expect(screen.getByTestId('maris-dashboard')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /sign in to live control/i })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('control-dashboard')).not.toBeInTheDocument()
   })
 
   it('shows an error when the Google account is not allowed', async () => {
@@ -131,5 +144,44 @@ describe('Website control authentication', () => {
     expect(screen.getByText(/VITE_FIREBASE_API_KEY/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /continue with google/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('control-dashboard')).not.toBeInTheDocument()
+  })
+
+  it('keeps the AquaScan field video on the company homepage', () => {
+    render(<Website />)
+
+    const video = screen.getByLabelText(/aquascan vessel field video/i)
+    expect(video).toHaveAttribute('src', '/media/aquascan-hero.mp4')
+    expect(video).toHaveAttribute('poster', '/media/aquascan-hero-poster.jpg')
+    expect(video).toHaveAttribute('autoplay')
+    expect(video).toHaveAttribute('loop')
+    expect(video).toHaveProperty('muted', true)
+    expect(document.querySelector('.hero-proof')).toHaveTextContent(/aquascan in development/i)
+  })
+
+  it.each([
+    ['/news', /aquascan remains in active development/i],
+    ['/privacy', /privacy policy/i],
+    ['/terms', /terms of use/i],
+  ])('renders the public company page at %s', (path, heading) => {
+    window.history.pushState({}, '', path)
+    render(<Website />)
+
+    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
+  })
+
+  it('lists the AquaLabs founding team and their roles', () => {
+    window.history.pushState({}, '', '/company')
+    render(<Website />)
+
+    expect(screen.getByRole('heading', { name: 'Aven Mitchell' })).toBeInTheDocument()
+    expect(screen.getByText('Lead Electronics & Software')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Aiden Russi' })).toBeInTheDocument()
+    expect(screen.getByText('Co-Lead CAD and Probe Design')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Skylar Cauntay' })).toBeInTheDocument()
+    expect(screen.getByText('Co-Lead CAD and Vessel Design')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Oliver Hathaway' })).toBeInTheDocument()
+    expect(screen.getByText('Lead R&D')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Hayden Wells' })).toBeInTheDocument()
+    expect(screen.getByText('Lead Organizational Outreach')).toBeInTheDocument()
   })
 })
