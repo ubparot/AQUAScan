@@ -20,16 +20,38 @@ const SHAPES: Array<[fill: string, d: string]> = [
   ['wave-blue', 'M663,661C662.3,665.3 662.3,669 661,674C659.7,679 656.7,686.7 655,691C653.6,694.7 653,696.6 651,700C647.7,705.8 639.3,719.5 635,726C631.4,731.5 629.4,734.1 625,739C620.2,744.3 614.3,751.2 606,758C597.5,765 582,775.8 574,781C568,784.9 564.6,786.2 558,789C550.8,792 538,796.7 531,799C525.1,801 521.8,801.8 516,803C510.2,804.2 502.8,805.3 496,806C489.2,806.7 483.3,807.3 475,807C466.7,806.7 453.8,805.2 446,804C438.7,802.9 433.8,801.8 428,800C422.2,798.2 416.7,795.3 411,793L415,798L417,797C419.7,799.3 421.8,801.8 425,804C428.2,806.2 431.5,808 436,810C440.5,812 446,814.3 452,816C458,817.7 463.9,819.4 472,820C481.2,820.7 497.2,820.7 507,820C516.7,819.3 522.7,818 531,816C539.3,814 548.2,811.3 557,808C565.8,804.7 574.8,801.2 584,796C593.2,790.8 604,783.5 612,777C620,770.5 626.2,764 632,757C637.8,750 643.2,741.7 647,735C650.8,728.3 652.7,723.7 655,717C657.3,710.3 659.7,701.3 661,695C662.3,688.7 662.7,684.7 663,679C663.3,673.3 663,667 663,661Z'],
 ]
 
-export function AquaScanLogo({ className, title = 'AquaScan' }: { className?: string; title?: string }) {
+type Stop = [offset: string, color: string]
+type Gradient = { x1: string; y1: string; x2: string; y2: string; stops: Stop[] }
+
+/** The original artwork's colours, for light backgrounds. */
+const COLOR: Record<string, Gradient> = {
+  'drop-top': { x1: '20%', y1: '12%', x2: '91%', y2: '90%', stops: [['0%', '#0b6ab5'], ['34%', '#0753a9'], ['76%', '#034a9b'], ['100%', '#034195']] },
+  'drop-bottom': { x1: '24%', y1: '10%', x2: '80%', y2: '100%', stops: [['0%', '#1878c3'], ['38%', '#044f9d'], ['100%', '#003c8f']] },
+  'drop-inner': { x1: '10%', y1: '0%', x2: '90%', y2: '100%', stops: [['0%', '#0657ac'], ['100%', '#003d94']] },
+  'text-blue': { x1: '0%', y1: '0%', x2: '2%', y2: '100%', stops: [['0%', '#00439d'], ['51%', '#003995'], ['100%', '#003a91']] },
+  'wave-blue': { x1: '8%', y1: '0%', x2: '98%', y2: '95%', stops: [['0%', '#247ec9'], ['55%', '#2389d3'], ['100%', '#1371bb']] },
+}
+
+/** Reversed out for dark backgrounds and video: white wordmark, brighter drop. */
+const LIGHT: Record<string, Gradient> = {
+  'drop-top': { x1: '20%', y1: '12%', x2: '91%', y2: '90%', stops: [['0%', '#7cc8ff'], ['45%', '#3aa0f2'], ['100%', '#1d7fd8']] },
+  'drop-bottom': { x1: '24%', y1: '10%', x2: '80%', y2: '100%', stops: [['0%', '#8fd2ff'], ['40%', '#3d9ef0'], ['100%', '#1b74cf']] },
+  'drop-inner': { x1: '10%', y1: '0%', x2: '90%', y2: '100%', stops: [['0%', '#5fb6fb'], ['100%', '#2387e0']] },
+  'text-blue': { x1: '0%', y1: '0%', x2: '0%', y2: '100%', stops: [['0%', '#ffffff'], ['100%', '#ffffff']] },
+  'wave-blue': { x1: '8%', y1: '0%', x2: '98%', y2: '95%', stops: [['0%', '#d9f1ff'], ['100%', '#a6dcff']] },
+}
+
+export function AquaScanLogo({ className, title = 'AquaScan', tone = 'color' }: { className?: string; title?: string; tone?: 'color' | 'light' }) {
   const id = useId().replace(/:/g, '')
+  const palette = tone === 'light' ? LIGHT : COLOR
   return (
     <svg className={className} viewBox="382 456 1259 413" role="img" aria-label={title}>
       <defs>
-        <linearGradient id={`${id}-drop-top`} x1="20%" y1="12%" x2="91%" y2="90%"><stop offset="0%" stopColor="#0b6ab5" /><stop offset="34%" stopColor="#0753a9" /><stop offset="76%" stopColor="#034a9b" /><stop offset="100%" stopColor="#034195" /></linearGradient>
-        <linearGradient id={`${id}-drop-bottom`} x1="24%" y1="10%" x2="80%" y2="100%"><stop offset="0%" stopColor="#1878c3" /><stop offset="38%" stopColor="#044f9d" /><stop offset="100%" stopColor="#003c8f" /></linearGradient>
-        <linearGradient id={`${id}-drop-inner`} x1="10%" y1="0%" x2="90%" y2="100%"><stop offset="0%" stopColor="#0657ac" /><stop offset="100%" stopColor="#003d94" /></linearGradient>
-        <linearGradient id={`${id}-text-blue`} x1="0%" y1="0%" x2="2%" y2="100%"><stop offset="0%" stopColor="#00439d" /><stop offset="51%" stopColor="#003995" /><stop offset="100%" stopColor="#003a91" /></linearGradient>
-        <linearGradient id={`${id}-wave-blue`} x1="8%" y1="0%" x2="98%" y2="95%"><stop offset="0%" stopColor="#247ec9" /><stop offset="55%" stopColor="#2389d3" /><stop offset="100%" stopColor="#1371bb" /></linearGradient>
+        {Object.entries(palette).map(([name, g]) => (
+          <linearGradient key={name} id={`${id}-${name}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2}>
+            {g.stops.map(([offset, color]) => <stop key={offset} offset={offset} stopColor={color} />)}
+          </linearGradient>
+        ))}
       </defs>
       {SHAPES.map(([fill, d], index) => <path key={index} fill={`url(#${id}-${fill})`} fillRule="evenodd" d={d} />)}
     </svg>

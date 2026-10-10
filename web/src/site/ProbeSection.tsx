@@ -1,6 +1,4 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { AquaScanLogo } from './AquaScanLogo'
-import { FilmModal } from './FilmModal'
 import { ButtonLink } from './primitives'
 import { clamp, explodeAt } from './probeTimeline'
 
@@ -16,25 +14,24 @@ function webglAvailable() {
 }
 
 /**
- * Home hero: the real probe CAD on a light stage, shown from a fixed angle.
- * It expands into an exploded view as the hero scrolls away. The page scrolls normally; nothing is pinned.
+ * "The probe": the real probe CAD on a light stage. It separates into its parts as the section moves up the
+ * screen and closes again on the way back. The page scrolls normally; nothing is pinned.
  */
-export function ProbeHero() {
+export function ProbeSection() {
   const sectionRef = useRef<HTMLElement>(null)
   const progress = useRef(0)
   const [use3d] = useState(() => typeof window !== 'undefined' && typeof ResizeObserver !== 'undefined' && webglAvailable())
   const [modelReady, setModelReady] = useState(false)
-  const [filmOpen, setFilmOpen] = useState(false)
-  const closeFilm = useCallback(() => setFilmOpen(false), [])
   const onReady = useCallback(() => setModelReady(true), [])
 
   useEffect(() => {
     const update = () => {
       const section = sectionRef.current
       if (!section) return
-      // 0 at the top of the page, 1 once the hero is 40% scrolled away.
+      // 0 while the section is still entering; 1 once its top has risen to 20% from the top of the screen.
       const rect = section.getBoundingClientRect()
-      const p = clamp(-rect.top / Math.max(1, rect.height * 0.4))
+      const vh = window.innerHeight
+      const p = clamp((vh * 0.55 - rect.top) / Math.max(1, vh * 0.5))
       progress.current = p
       section.style.setProperty('--explode', explodeAt(p).toFixed(4))
     }
@@ -48,31 +45,26 @@ export function ProbeHero() {
   }, [])
 
   return (
-    <section ref={sectionRef} className="probe-hero" data-3d={use3d} aria-labelledby="probe-hero-title">
+    <section ref={sectionRef} className="probe-hero" data-3d={use3d} aria-labelledby="probe-title">
       <div className="probe-hero-inner">
         <div className="probe-hero-copy">
-          <h1 id="probe-hero-title" className="hero-logo"><AquaScanLogo /></h1>
-          <p className="tile-subtitle">See below the surface.</p>
+          <h2 id="probe-title" className="tile-title">The probe</h2>
+          <p className="tile-subtitle">Lowered on a tether. Measuring at every depth.</p>
           <div className="tile-actions">
-            <ButtonLink to="products">Learn more</ButtonLink>
-            <button className="button button-secondary" type="button" onClick={() => setFilmOpen(true)}>
-              Watch the film
-              <svg viewBox="0 0 10 12" width="9" height="11" aria-hidden="true"><path d="M1 1v10l8-5z" fill="currentColor" /></svg>
-            </button>
+            <ButtonLink to="products" hash="probe">Learn more</ButtonLink>
+            <ButtonLink to="products" hash="specs" variant="secondary">Tech specs</ButtonLink>
           </div>
         </div>
 
         <div className="probe-stage" data-ready={modelReady}>
-          <img className="probe-poster" src="/media/site/probe-hero.webp" alt={use3d ? '' : 'The AquaScan sensor probe'} width={1600} height={1000} />
+          <img className="probe-poster" src="/media/site/probe-hero.webp" alt={use3d ? '' : 'The AquaScan sensor probe'} width={1600} height={1000} loading="lazy" />
           {use3d && (
             <Suspense fallback={null}>
               <ProbeStage progress={progress} onReady={onReady} />
             </Suspense>
           )}
         </div>
-
       </div>
-      {filmOpen && <FilmModal onClose={closeFilm} />}
     </section>
   )
 }

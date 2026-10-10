@@ -149,7 +149,12 @@ describe('Website control authentication', () => {
   it('opens the AquaScan field film from the homepage hero', () => {
     render(<Website />)
 
-    expect(screen.getByRole('heading', { level: 1, name: 'AquaScan' })).toBeInTheDocument()
+    // The hero is about AquaLabs; AquaScan is introduced in the section after it.
+    const hero = screen.getByRole('heading', { level: 1 })
+    expect(hero).toHaveTextContent(/technology for understanding the water/i)
+    expect(hero.closest('section')).not.toHaveTextContent(/aquascan/i)
+    expect(screen.getByText('Introducing')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'AquaScan' })).toBeInTheDocument()
     expect(screen.queryByLabelText(/aquascan vessel field video/i)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /watch the film/i }))
@@ -157,10 +162,26 @@ describe('Website control authentication', () => {
     expect(video).toHaveAttribute('src', '/media/aquascan-hero.mp4')
     expect(video).toHaveAttribute('poster', '/media/aquascan-hero-poster.jpg')
     expect(video).toHaveAttribute('autoplay')
-    expect(video).toHaveProperty('muted', true)
+    expect(video).toHaveProperty('muted', false) // opened by a click, so it plays with sound
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('dialog', { name: /aquascan film/i })).not.toBeInTheDocument()
+  })
+
+  it('loops silent field footage behind the homepage hero, with the probe and survey', () => {
+    render(<Website />)
+
+    const loop = document.querySelector('.video-hero-media') as HTMLVideoElement
+    expect(loop).toHaveAttribute('src', '/media/aquascan-field.mp4')
+    expect(loop).toHaveProperty('muted', true)
+    expect(screen.getByRole('button', { name: /pause background video|play background video/i })).toBeInTheDocument()
+    expect(screen.queryByText('5th in the Nation')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'The probe' })).toBeInTheDocument()
+
+    const survey = screen.getAllByRole('link', { name: /take the survey/i })[0]
+    expect(survey).toHaveAttribute('href', 'https://forms.gle/CJHyLLHwWEMvw5T67')
+    expect(survey).toHaveAttribute('target', '_blank')
+    expect(survey).toHaveAttribute('rel', expect.stringContaining('noopener'))
   })
 
   it('routes between pages with real links and keeps legacy paths working', () => {
@@ -170,7 +191,7 @@ describe('Website control authentication', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'AquaScan' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /tech specs/i })).toBeInTheDocument()
 
-    const companyLink = screen.getAllByRole('link', { name: 'Company' })[0]
+    const companyLink = screen.getAllByRole('link', { name: 'About' })[0]
     expect(companyLink).toHaveAttribute('href', '/company')
     fireEvent.click(companyLink)
 
@@ -179,8 +200,8 @@ describe('Website control authentication', () => {
   })
 
   it.each([
-    ['/newsroom', /aquascan remains in active development/i],
-    ['/news', /aquascan remains in active development/i],
+    ['/newsroom', /fifth in the nation/i],
+    ['/news', /fifth in the nation/i],
     ['/privacy', /privacy policy/i],
     ['/terms', /terms of use/i],
   ])('renders the public company page at %s', (path, heading) => {

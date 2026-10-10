@@ -5,10 +5,10 @@ import type { SitePage } from '../routes'
 type Story = { title: string; summary: string; image: Media; to: SitePage; hash?: string }
 
 const featured: Story = {
-  title: 'AquaScan remains in active development.',
+  title: 'AquaScan places fifth in the nation at TSA.',
   summary:
-    'Work continues on the vessel, depth-aware sensing, mission control, and the data experience that make up the AquaScan platform. The demonstrations on this site show where the product is headed while development and validation continue.',
-  image: media.probeShore,
+    'AquaLabs took AquaScan to the 2026 Technology Student Association National Conference and placed fifth in the country in Engineering Design, after a development cycle that added autonomous missions, depth-aware sensing, and Maris.',
+  image: media.vesselPond,
   to: 'products',
 }
 
@@ -16,22 +16,21 @@ const stories: Story[] = [
   {
     title: 'From the pool to the pond.',
     summary: 'After seal and subsystem tests, AquaScan sampled multiple points at varying depths in real pond conditions.',
-    image: media.boatFountain,
+    image: media.poolDeploy,
     to: 'products',
     hash: 'testing',
   },
   {
     title: 'Maris brings the analysis to your browser.',
     summary: 'Explore sample pond data, or your own AquaScan files, by place and by depth. No account needed.',
-    image: media.depthProfiles,
+    image: media.probeShore,
     to: 'maris',
   },
   {
-    title: 'Inside the probe.',
-    summary: 'A look at the sealed, sinking sensor body that turns AquaScan into a measurement tool.',
-    image: media.probeExploded,
-    to: 'products',
-    hash: 'probe',
+    title: 'Help shape what we build next.',
+    summary: 'We are surveying people who test water, teach, or work with field data. It takes about five minutes.',
+    image: media.underwaterProbe,
+    to: 'contact',
   },
 ]
 

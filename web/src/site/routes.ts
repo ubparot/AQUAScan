@@ -27,10 +27,10 @@ export const pagePaths: Record<SitePage, string> = {
 }
 
 export const pageTitles: Record<SitePage, string> = {
-  home: 'AquaLabs — Aquatic technology from Chesapeake, Virginia',
+  home: 'AquaLabs — Technology for understanding the water',
   products: 'AquaScan — AquaLabs',
   applications: 'Applications — AquaLabs',
-  company: 'Company — AquaLabs',
+  company: 'About AquaLabs',
   news: 'Newsroom — AquaLabs',
   contact: 'Contact — AquaLabs',
   privacy: 'Privacy Policy — AquaLabs',

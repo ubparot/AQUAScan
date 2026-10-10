@@ -22,14 +22,13 @@ export function FilmModal({ onClose }: { onClose: () => void }) {
       <button ref={closeRef} className="film-close" type="button" aria-label="Close film" onClick={onClose}>
         <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
       </button>
+      {/* Opened by a click, so it may start with sound. (The current film file has no audio track.) */}
       <video
         className="film-video"
         src="/media/aquascan-hero.mp4"
         poster={media.heroPoster.src}
         aria-label="AquaScan vessel field video"
         autoPlay
-        muted
-        loop
         playsInline
         controls
         onClick={(event) => event.stopPropagation()}

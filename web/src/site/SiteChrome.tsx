@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { AquaLabsLogo } from './AquaLabsLogo'
+import { SurveyLink } from './Badges'
 import { SiteLink } from './primitives'
 import type { MarketingPage, SitePage } from './routes'
 
@@ -7,9 +8,8 @@ const globalItems: Array<{ page: SitePage; label: string }> = [
   { page: 'products', label: 'AquaScan' },
   { page: 'maris', label: 'Maris' },
   { page: 'applications', label: 'Applications' },
-  { page: 'company', label: 'Company' },
+  { page: 'company', label: 'About' },
   { page: 'news', label: 'Newsroom' },
-  { page: 'contact', label: 'Contact' },
 ]
 
 export function GlobalNav({ page }: { page: MarketingPage }) {
@@ -30,7 +30,7 @@ export function GlobalNav({ page }: { page: MarketingPage }) {
     <header className="globalnav" data-open={open}>
       <nav className="globalnav-inner" aria-label="Main navigation">
         <SiteLink to="home" className="globalnav-brand" aria-label="AquaLabs home" onClick={() => setOpen(false)}>
-          <AquaLabsLogo height={19} />
+          <AquaLabsLogo height={22} />
         </SiteLink>
         <ul className="globalnav-list">
           {globalItems.map((item) => (
@@ -39,7 +39,7 @@ export function GlobalNav({ page }: { page: MarketingPage }) {
             </li>
           ))}
         </ul>
-        <SiteLink to="control" className="globalnav-signin">Sign in</SiteLink>
+        <SurveyLink className="globalnav-cta">Take the survey</SurveyLink>
         <button
           className="globalnav-toggle"
           type="button"
@@ -60,7 +60,10 @@ export function GlobalNav({ page }: { page: MarketingPage }) {
             </li>
           ))}
         </ul>
-        <SiteLink to="control" className="globalnav-menu-signin" onClick={() => setOpen(false)}>Sign in to live control</SiteLink>
+        <div className="globalnav-menu-actions">
+          <SurveyLink className="button button-primary">Take the survey</SurveyLink>
+          <SiteLink to="control" className="globalnav-menu-signin" onClick={() => setOpen(false)}>Sign in to live control</SiteLink>
+        </div>
       </div>
     </header>
   )
@@ -71,29 +74,39 @@ export function Footer({ footnotes }: { footnotes?: ReactNode }) {
     <footer className="footer">
       <div className="footer-inner">
         {footnotes && <div className="footer-notes">{footnotes}</div>}
+        <div className="footer-brand">
+          <AquaLabsLogo height={20} />
+          <p>AquaLabs is the student engineering team behind AquaScan, based in Chesapeake, Virginia.</p>
+        </div>
         <nav className="footer-directory" aria-label="Site directory">
           <section>
             <h3>AquaScan</h3>
             <ul>
               <li><SiteLink to="products">Overview</SiteLink></li>
               <li><SiteLink to="products" hash="specs">Tech specs</SiteLink></li>
-              <li><SiteLink to="maris">Maris</SiteLink></li>
-              <li><SiteLink to="control">Live control</SiteLink></li>
+              <li><SiteLink to="applications">Applications</SiteLink></li>
             </ul>
           </section>
           <section>
-            <h3>Explore</h3>
+            <h3>Software</h3>
             <ul>
-              <li><SiteLink to="applications">Applications</SiteLink></li>
-              <li><SiteLink to="news">Newsroom</SiteLink></li>
+              <li><SiteLink to="maris">Maris</SiteLink></li>
+              <li><SiteLink to="control">Sign in to live control</SiteLink></li>
             </ul>
           </section>
           <section>
             <h3>AquaLabs</h3>
             <ul>
-              <li><SiteLink to="company">About AquaLabs</SiteLink></li>
+              <li><SiteLink to="company">About</SiteLink></li>
               <li><SiteLink to="company" hash="team">Team</SiteLink></li>
+              <li><SiteLink to="news">Newsroom</SiteLink></li>
               <li><SiteLink to="contact">Contact</SiteLink></li>
+            </ul>
+          </section>
+          <section>
+            <h3>Get involved</h3>
+            <ul>
+              <li><SurveyLink className="">Take the survey</SurveyLink></li>
             </ul>
           </section>
         </nav>

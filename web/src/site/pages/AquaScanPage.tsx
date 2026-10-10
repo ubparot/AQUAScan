@@ -1,15 +1,15 @@
 import { useRef, useState, type ReactNode } from 'react'
 import { AquaScanLogo } from '../AquaScanLogo'
+import { AwardBadge, WindowFrame } from '../Badges'
 import { ChapterNav } from '../ChapterNav'
 import { media, type Media } from '../media'
 import { ButtonLink, Img, MoreLink, Reveal, SiteLink } from '../primitives'
 
 const highlights: Array<{ caption: string; image: Media }> = [
-  { caption: 'Drives itself to the spot you pick on the map.', image: media.boatDusk },
-  { caption: 'A winch lowers the probe to the depth you choose.', image: media.probeFront },
-  { caption: 'Every reading is tagged with position and depth.', image: media.depthProfiles },
-  { caption: 'Operated live from a browser on the shore.', image: media.controlDrive },
-  { caption: 'Tested in a pool first, then a pond.', image: media.boatFountain },
+  { caption: 'Drives itself to the spot you pick on the map.', image: media.pondUnderway },
+  { caption: 'A winch lowers the probe to the depth you choose.', image: media.poolDeploy },
+  { caption: 'Sensors read the water at every depth.', image: media.underwaterProbe },
+  { caption: 'Every reading is tagged with position and depth.', image: media.boatFountain },
 ]
 
 const steps = [
@@ -130,9 +130,10 @@ export function AquaScanPage() {
           <h1 className="hero-logo hero-logo-large"><AquaScanLogo /></h1>
           <p className="product-hero-subtitle">Water quality, mapped by location and depth.</p>
           <div className="tile-actions">
-            <ButtonLink to="contact">Get in touch</ButtonLink>
+            <ButtonLink to="maris">Explore the data</ButtonLink>
             <ButtonLink to="products" hash="specs" variant="secondary">Tech specs</ButtonLink>
           </div>
+          <AwardBadge className="product-hero-award" />
         </Reveal>
         <Reveal className="product-hero-media" delay={150}>
           <Img {...media.vesselPond} eager />
@@ -174,8 +175,8 @@ export function AquaScanPage() {
               <figcaption>Winch and spool, mounted between the pontoons.</figcaption>
             </figure>
             <figure>
-              <Img {...media.electronics} />
-              <figcaption>Electronics tray: controller, fuses, and battery wiring.</figcaption>
+              <Img {...media.boatWireframe} />
+              <figcaption>Pontoon structure, with the internal ribs that keep the long printed hulls stiff.</figcaption>
             </figure>
           </Reveal>
         </div>
@@ -243,30 +244,30 @@ export function AquaScanPage() {
               directly over Wi-Fi or through a cloud relay. Nothing to install.
             </p>
           </Reveal>
-          <Reveal className="screen"><Img {...media.controlDrive} /></Reveal>
+          <Reveal><WindowFrame className="screen"><Img {...media.controlDrive} /></WindowFrame></Reveal>
           <div className="screen-trio">
             <Reveal as="figure">
-              <div className="screen screen-small"><Img {...media.controlPlan} /></div>
+              <WindowFrame className="screen-small"><Img {...media.controlPlan} /></WindowFrame>
               <figcaption><strong>Plan.</strong> Build a waypoint route and check it before launch.</figcaption>
             </Reveal>
             <Reveal as="figure" delay={80}>
-              <div className="screen screen-small"><Img {...media.controlRun} /></div>
+              <WindowFrame className="screen-small"><Img {...media.controlRun} /></WindowFrame>
               <figcaption><strong>Run.</strong> Follow progress waypoint by waypoint, with ETA and takeover state.</figcaption>
             </Reveal>
             <Reveal as="figure" delay={160}>
-              <div className="screen screen-small"><Img {...media.controlReview} /></div>
+              <WindowFrame className="screen-small"><Img {...media.controlReview} /></WindowFrame>
               <figcaption><strong>Review.</strong> Summarize the mission and export the data.</figcaption>
             </Reveal>
           </div>
-          <div className="figure-pair">
-            <Reveal as="figure">
-              <div className="figure-frame figure-frame-cream"><Img {...media.sensorMaps} /></div>
-              <figcaption><strong>Location-based heat maps.</strong> One map per sensor, interpolated from GPS-tagged samples.</figcaption>
+          <div className="maris-feature">
+            <Reveal className="maris-feature-copy">
+              <h3>Then make sense of it in Maris.</h3>
+              <p>
+                Maris is AquaScan’s analysis software. It maps every station, plots each reading against depth, and points
+                out what stands out, such as oxygen dropping near the bottom.
+              </p>
             </Reveal>
-            <Reveal as="figure" delay={100}>
-              <div className="figure-frame figure-frame-dark"><Img {...media.depthProfiles} /></div>
-              <figcaption><strong>Depth profiles.</strong> Each reading plotted against probe depth to show how the water changes.</figcaption>
-            </Reveal>
+            <Reveal delay={100}><WindowFrame><Img {...media.marisApp} /></WindowFrame></Reveal>
           </div>
           <Reveal className="center-link"><MoreLink to="maris">Explore the data in Maris</MoreLink></Reveal>
         </div>
@@ -291,7 +292,7 @@ export function AquaScanPage() {
               <figcaption><h3>Pool testing</h3><p>Flotation, propulsion, probe deployment, and live data in controlled water.</p></figcaption>
             </Reveal>
             <Reveal as="figure" className="test-card" delay={160}>
-              <Img {...media.boatDusk} />
+              <Img {...media.pondTest} />
               <figcaption><h3>Pond testing</h3><p>Multi-point sampling at varying depths in murky, real-world water.</p></figcaption>
             </Reveal>
           </div>
