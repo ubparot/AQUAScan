@@ -1,36 +1,9 @@
-import {
-  Atom,
-  Binary,
-  BrainCircuit,
-  Cpu,
-  Database,
-  Download,
-  Gauge,
-  GitBranch,
-  Grid3X3,
-  LineChart as LineChartIcon,
-  Play,
-  RadioTower,
-  RotateCcw,
-  ScanLine,
-  Sparkles,
-  Waves,
-  Zap,
-} from 'lucide-react'
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type KeyboardEvent } from 'react'
 import {
   Area,
-  Bar,
-  BarChart,
+  AreaChart,
   CartesianGrid,
-  Cell,
-  ComposedChart,
-  Line,
-  LineChart,
-  PolarAngleAxis,
-  PolarGrid,
-  Radar,
-  RadarChart,
+  ReferenceLine,
   ResponsiveContainer,
   Scatter,
   ScatterChart,
@@ -38,461 +11,525 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { loadMissionFromFile, loadMissionFromUrl } from './domain/missionLoader'
+import {
+  analyzeMission,
+  findingsFor,
+  formatDepth,
+  formatValue,
+  metricStats,
+  readingsCsv,
+  stationName,
+  stationValue,
+  summaryJson,
+  type Analysis,
+  type Layer,
+  type Metric,
+  type Station,
+} from './maris/analysis'
 import './MarisLab.css'
 
-type GraphMode = 'cascade' | 'spectral' | 'risk' | 'depth'
-type Density = 'normal' | 'extreme'
+const DATASETS = [
+  { id: 'profiles', label: 'Pond profiles', file: '/missions/do-extrapolated-mission.csv' },
+  { id: 'transect', label: 'Pond transect', file: '/missions/demo-mission.csv' },
+  { id: 'pool', label: 'Pool test', file: '/missions/pool-demo-mission.csv' },
+] as const
 
-type SeriesPoint = {
-  tick: number
-  oxygen: number
-  bloom: number
-  anomaly: number
-  turbidity: number
-  temperature: number
-  signal: number
-  depth: number
-}
+type DatasetId = (typeof DATASETS)[number]['id'] | 'upload'
 
-type Finding = {
-  id: string
-  label: string
-  confidence: number
-  tone: 'good' | 'warn' | 'bad'
-  detail: string
-}
-
-const modes: Array<{ id: GraphMode; label: string; detail: string }> = [
-  { id: 'cascade', label: 'Cascade', detail: 'Multi-sensor temporal overlays' },
-  { id: 'spectral', label: 'Spectral', detail: 'Frequency bands and probe noise' },
-  { id: 'risk', label: 'Risk', detail: 'Bloom and anomaly synthesis' },
-  { id: 'depth', label: 'Depth', detail: 'Water-column profile generator' },
+const LAYERS: Array<{ id: Layer; label: string }> = [
+  { id: 'surface', label: 'Surface' },
+  { id: 'average', label: 'Average' },
+  { id: 'bottom', label: 'Bottom' },
 ]
 
-const palette = ['#3be7ff', '#7cffb2', '#ffd166', '#ff5c8a', '#a78bfa', '#ff8f3d']
+/** Sequential scale, deep blue (low) to warm yellow (high). */
+const SCALE = ['#123a7a', '#1f6fb2', '#2fa4b9', '#7cc9a0', '#e9cf5b']
+const SELECTED = '#0071e3'
+
+function colorAt(t: number) {
+  const x = Math.min(1, Math.max(0, Number.isFinite(t) ? t : 0.5)) * (SCALE.length - 1)
+  const i = Math.min(SCALE.length - 2, Math.floor(x))
+  const mix = (a: string, b: string, k: number) => {
+    const pa = [1, 3, 5].map((o) => parseInt(a.slice(o, o + 2), 16))
+    const pb = [1, 3, 5].map((o) => parseInt(b.slice(o, o + 2), 16))
+    return `rgb(${pa.map((v, j) => Math.round(v + (pb[j] - v) * k)).join(',')})`
+  }
+  return mix(SCALE[i], SCALE[i + 1], x - i)
+}
+
+function download(name: string, contents: string, type: string) {
+  const url = URL.createObjectURL(new Blob([contents], { type }))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = name
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function formatDuration(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  const rest = Math.round(seconds % 60)
+  return minutes ? `${minutes} min ${rest} s` : `${rest} s`
+}
 
 function MarisLab() {
-  const [mode, setMode] = useState<GraphMode>('cascade')
-  const [seed, setSeed] = useState(42)
-  const [density, setDensity] = useState<Density>('extreme')
-  const [scanLevel, setScanLevel] = useState(68)
-  const [selectedMetric, setSelectedMetric] = useState('oxygen')
-  const [events, setEvents] = useState<string[]>(['Booted Maris analysis runtime', 'Loaded synthetic watershed mission'])
+  const [datasetId, setDatasetId] = useState<DatasetId>('profiles')
+  const [analysis, setAnalysis] = useState<Analysis>()
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [metricId, setMetricId] = useState('do')
+  const [layer, setLayer] = useState<Layer>('bottom')
+  const [selected, setSelected] = useState<string>()
+  const [dragging, setDragging] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
 
-  const frameCount = density === 'extreme' ? 96 : 48
-  const data = useMemo(() => generateSeries(seed, frameCount, scanLevel), [frameCount, scanLevel, seed])
-  const spectrum = useMemo(() => generateSpectrum(data, seed), [data, seed])
-  const heatCells = useMemo(() => generateHeatCells(data), [data])
-  const radar = useMemo(() => buildRadar(data), [data])
-  const findings = useMemo(() => buildFindings(data, scanLevel), [data, scanLevel])
-  const summary = useMemo(() => summarize(data, findings), [data, findings])
+  const adopt = useCallback((next: Analysis) => {
+    setAnalysis(next)
+    setError('')
+    const metric = next.metrics.find((item) => item.id === 'do') ?? next.metrics[0]
+    setMetricId(metric?.id ?? '')
+    setLayer(next.hasProfiles ? 'bottom' : 'average')
+    // Start on the most telling place: where the metric bottoms out, if the probe profiled it there.
+    const stats = metric && metricStats(next, metric.id)
+    const profiled = next.stations.filter((station) => station.maxDepth - station.minDepth >= 0.4)
+    const start = profiled.find((station) => station.id === stats?.minAt.station) ?? profiled[0]
+    setSelected(start?.id ?? stats?.minAt.station ?? next.stations[0]?.id)
+  }, [])
 
-  const runScan = () => {
-    setSeed((value) => value + 17)
-    setScanLevel((value) => Math.min(96, value + 3))
-    setEvents((items) => [`Generated ${mode} graph packet #${seed + 17}`, `Reweighted ${selectedMetric} channel`, ...items].slice(0, 7))
+  // Fetch a bundled dataset; `token` drops stale responses when the visitor switches quickly.
+  const request = useRef(0)
+  const fetchDataset = useCallback((id: DatasetId) => {
+    const dataset = DATASETS.find((item) => item.id === id)
+    if (!dataset) return
+    const token = ++request.current
+    loadMissionFromUrl(dataset.file)
+      .then((mission) => { if (token === request.current) adopt(analyzeMission(mission)) })
+      .catch((reason: unknown) => { if (token === request.current) setError(reason instanceof Error ? reason.message : 'Could not load the dataset.') })
+      .finally(() => { if (token === request.current) setLoading(false) })
+  }, [adopt])
+
+  useEffect(() => fetchDataset('profiles'), [fetchDataset])
+
+  const chooseDataset = (id: DatasetId) => {
+    if (id === datasetId) return
+    setDatasetId(id)
+    setLoading(true)
+    fetchDataset(id)
   }
 
-  const randomize = () => {
-    setSeed((value) => value * 3 + 11)
-    setScanLevel(Math.round(45 + pseudo(seed + 91) * 45))
-    setEvents((items) => ['Randomized signal field and model weights', ...items].slice(0, 7))
-  }
-
-  const exportSnapshot = () => {
-    const payload = {
-      app: 'Maris by AQUAScan',
-      generatedAtUtc: new Date().toISOString(),
-      mode,
-      density,
-      scanLevel,
-      selectedMetric,
-      summary,
-      findings,
-      sample: data.slice(0, 12),
+  const openFile = async (file: File | undefined) => {
+    if (!file) return
+    setLoading(true)
+    request.current++ // a newer request: ignore any bundled dataset still loading
+    try {
+      const mission = await loadMissionFromFile(file)
+      adopt(analyzeMission(mission))
+      setDatasetId('upload')
+    } catch (reason) {
+      setError(reason instanceof Error ? `${file.name}: ${reason.message}` : `Could not read ${file.name}.`)
+    } finally {
+      setLoading(false)
     }
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `maris-${mode}-snapshot.json`
-    anchor.click()
-    URL.revokeObjectURL(url)
-    setEvents((items) => ['Exported graph snapshot JSON', ...items].slice(0, 7))
   }
+
+  const onFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    void openFile(event.target.files?.[0])
+    event.target.value = ''
+  }
+
+  const onDrop = (event: DragEvent) => {
+    event.preventDefault()
+    setDragging(false)
+    void openFile(event.dataTransfer.files?.[0])
+  }
+
+  const metric = analysis?.metrics.find((item) => item.id === metricId) ?? analysis?.metrics[0]
 
   return (
-    <main className="maris-lab" data-density={density}>
-      <header className="maris-command">
-        <div className="maris-brand-lockup">
-          <div className="maris-mark"><Atom size={26} /></div>
-          <div>
-            <p>Congressional App Challenge Console</p>
-            <h1>Maris</h1>
-          </div>
+    <main
+      className="maris"
+      onDragOver={(event) => { event.preventDefault(); setDragging(true) }}
+      onDragLeave={(event) => { if (event.currentTarget === event.target) setDragging(false) }}
+      onDrop={onDrop}
+    >
+      <header className="maris-head">
+        <div>
+          <h1>Maris</h1>
+          <p>Explore AquaScan water-quality data by place and by depth.</p>
         </div>
-        <div className="maris-command-strip" aria-label="Maris runtime status">
-          <StatusChip icon={<Cpu size={15} />} label="Neural graph runtime" value="online" tone="good" />
-          <StatusChip icon={<RadioTower size={15} />} label="Signal frames" value={String(frameCount)} tone="neutral" />
-          <StatusChip icon={<BrainCircuit size={15} />} label="Model confidence" value={`${summary.confidence}%`} tone={summary.confidence > 72 ? 'good' : 'warn'} />
-          <StatusChip icon={<Zap size={15} />} label="Anomaly field" value={`${summary.anomaly}%`} tone={summary.anomaly > 62 ? 'bad' : summary.anomaly > 38 ? 'warn' : 'good'} />
+        <div className="maris-source">
+          <div className="maris-segmented" role="group" aria-label="Dataset">
+            {DATASETS.map((dataset) => (
+              <button key={dataset.id} type="button" aria-pressed={datasetId === dataset.id} onClick={() => chooseDataset(dataset.id)}>
+                {dataset.label}
+              </button>
+            ))}
+            {datasetId === 'upload' && analysis && <button type="button" aria-pressed="true">{analysis.name}</button>}
+          </div>
+          <button className="maris-upload" type="button" onClick={() => fileInput.current?.click()}>Upload data</button>
+          <input ref={fileInput} type="file" accept=".csv,.json,text/csv,application/json" hidden onChange={onFileChange} aria-label="Upload a mission CSV or JSON file" />
         </div>
       </header>
 
-      <section className="maris-grid">
-        <aside className="maris-sidebar">
-          <section className="maris-panel maris-control-panel">
-            <div className="maris-panel-heading">
-              <p>Graph generator</p>
-              <h2>Analysis modes</h2>
-            </div>
-            <div className="maris-mode-list">
-              {modes.map((item) => (
-                <button key={item.id} type="button" data-active={mode === item.id} onClick={() => setMode(item.id)}>
-                  <strong>{item.label}</strong>
-                  <span>{item.detail}</span>
-                </button>
-              ))}
-            </div>
-            <label className="maris-field">
-              <span>Primary channel</span>
-              <select value={selectedMetric} onChange={(event) => setSelectedMetric(event.target.value)}>
-                <option value="oxygen">Dissolved oxygen</option>
-                <option value="bloom">Bloom probability</option>
-                <option value="anomaly">Anomaly vector</option>
-                <option value="turbidity">Turbidity plume</option>
-                <option value="temperature">Thermal layer</option>
-              </select>
-            </label>
-            <label className="maris-field">
-              <span>Scan intensity {scanLevel}%</span>
-              <input type="range" min={20} max={96} value={scanLevel} onChange={(event) => setScanLevel(Number(event.target.value))} />
-            </label>
-            <div className="maris-segmented" aria-label="Data density">
-              <button type="button" data-active={density === 'normal'} onClick={() => setDensity('normal')}>Normal</button>
-              <button type="button" data-active={density === 'extreme'} onClick={() => setDensity('extreme')}>Extreme</button>
-            </div>
-            <div className="maris-action-grid">
-              <button type="button" className="maris-primary" onClick={runScan}><Play size={16} /> Generate</button>
-              <button type="button" onClick={randomize}><Sparkles size={16} /> Randomize</button>
-              <button type="button" onClick={() => setScanLevel(68)}><RotateCcw size={16} /> Reset</button>
-              <button type="button" onClick={exportSnapshot}><Download size={16} /> Export</button>
-            </div>
-          </section>
+      <p className="maris-note">
+        {datasetId === 'upload'
+          ? 'Your file stays in this browser. Nothing is uploaded to a server.'
+          : 'Sample datasets for illustration. Upload an AquaScan CSV or JSON, or drop one on the page, to analyze your own mission.'}
+      </p>
 
-          <section className="maris-panel">
-            <div className="maris-panel-heading">
-              <p>Decision engine</p>
-              <h2>Detected phenomena</h2>
-            </div>
-            <div className="maris-findings">
-              {findings.map((finding) => (
-                <article key={finding.id} data-tone={finding.tone}>
-                  <strong>{finding.label}</strong>
-                  <span>{finding.confidence}% confidence</span>
-                  <small>{finding.detail}</small>
-                </article>
-              ))}
-            </div>
-          </section>
-        </aside>
+      {error && <p className="maris-error" role="alert">{error}</p>}
 
-        <section className="maris-stage">
-          <section className="maris-panel maris-hero-panel">
-            <div className="maris-panel-heading">
-              <p>Live synthesis canvas</p>
-              <h2>{modeTitle(mode)}</h2>
-            </div>
-            <div className="maris-hero-chart">
-              {mode === 'cascade' && <CascadeGraph data={data} />}
-              {mode === 'spectral' && <SpectralGraph data={spectrum} />}
-              {mode === 'risk' && <RiskGraph data={data} />}
-              {mode === 'depth' && <DepthGraph data={data} />}
-            </div>
-          </section>
+      {!analysis || !metric ? (
+        <div className="maris-empty">{loading ? 'Loading data…' : 'No water-quality readings found in this file.'}</div>
+      ) : (
+        <Workspace
+          analysis={analysis}
+          metric={metric}
+          layer={layer}
+          selected={selected}
+          onMetric={setMetricId}
+          onLayer={setLayer}
+          onSelect={setSelected}
+          busy={loading}
+        />
+      )}
 
-          <section className="maris-panel-grid">
-            <section className="maris-panel">
-              <div className="maris-panel-heading compact">
-                <p>Correlation matrix</p>
-                <h2>Sensor heat field</h2>
-              </div>
-              <HeatMatrix cells={heatCells} />
-            </section>
-
-            <section className="maris-panel">
-              <div className="maris-panel-heading compact">
-                <p>Model geometry</p>
-                <h2>Environmental shape</h2>
-              </div>
-              <div className="maris-mini-chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={radar}>
-                    <PolarGrid stroke="rgba(112, 241, 255, 0.22)" />
-                    <PolarAngleAxis dataKey="metric" tick={{ fill: '#8bdce8', fontSize: 10 }} />
-                    <Radar dataKey="value" stroke="#7cffb2" fill="#3be7ff" fillOpacity={0.32} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
-            </section>
-
-            <section className="maris-panel maris-terminal-panel">
-              <div className="maris-panel-heading compact">
-                <p>Runtime log</p>
-                <h2>Graph operations</h2>
-              </div>
-              <div className="maris-terminal">
-                {events.map((event, index) => (
-                  <p key={`${event}-${index}`}><span>{String(index + 1).padStart(2, '0')}</span>{event}</p>
-                ))}
-              </div>
-            </section>
-          </section>
-        </section>
-
-        <aside className="maris-rightbar">
-          <section className="maris-panel maris-metrics-panel">
-            <div className="maris-panel-heading">
-              <p>System readouts</p>
-              <h2>Current synthetic run</h2>
-            </div>
-            <MetricReadout icon={<Gauge />} label="Risk pressure" value={`${summary.risk}%`} />
-            <MetricReadout icon={<Waves />} label="Oxygen stability" value={`${summary.oxygen}%`} />
-            <MetricReadout icon={<ScanLine />} label="Signal clarity" value={`${summary.signal}%`} />
-            <MetricReadout icon={<Database />} label="Graph packets" value={`${frameCount * 7}`} />
-          </section>
-
-          <section className="maris-panel">
-            <div className="maris-panel-heading">
-              <p>Output tools</p>
-              <h2>Performative controls</h2>
-            </div>
-            <div className="maris-tool-stack">
-              <button type="button" onClick={runScan}><LineChartIcon size={16} /> Build forecast ribbons</button>
-              <button type="button" onClick={randomize}><Grid3X3 size={16} /> Recompute matrix</button>
-              <button type="button" onClick={runScan}><GitBranch size={16} /> Branch scenario tree</button>
-              <button type="button" onClick={exportSnapshot}><Binary size={16} /> Compile report packet</button>
-            </div>
-          </section>
-
-          <section className="maris-panel maris-waterfall-panel">
-            <div className="maris-panel-heading compact">
-              <p>Packet waterfall</p>
-              <h2>Encoded samples</h2>
-            </div>
-            <div className="maris-waterfall" aria-label="Encoded packet waterfall">
-              {data.slice(0, 44).map((point, index) => (
-                <span key={`${point.tick}-${index}`} style={{ '--level': `${Math.round(point.signal)}%`, '--delay': `${index * 18}ms` } as CSSProperties} />
-              ))}
-            </div>
-          </section>
-        </aside>
-      </section>
+      {dragging && <div className="maris-drop" aria-hidden="true"><span>Drop a CSV or JSON file to analyze it</span></div>}
     </main>
   )
 }
 
-function CascadeGraph({ data }: { data: SeriesPoint[] }) {
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={data}>
-        <CartesianGrid stroke="rgba(112, 241, 255, 0.12)" vertical={false} />
-        <XAxis dataKey="tick" tick={{ fill: '#8bdce8', fontSize: 11 }} />
-        <YAxis tick={{ fill: '#8bdce8', fontSize: 11 }} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Area type="monotone" dataKey="bloom" fill="#ff5c8a" fillOpacity={0.18} stroke="#ff5c8a" strokeWidth={2} />
-        <Line type="monotone" dataKey="oxygen" stroke="#7cffb2" strokeWidth={3} dot={false} />
-        <Line type="monotone" dataKey="turbidity" stroke="#3be7ff" strokeWidth={2} dot={false} />
-        <Bar dataKey="anomaly" fill="#ffd166" opacity={0.42} />
-      </ComposedChart>
-    </ResponsiveContainer>
-  )
-}
+function Workspace({ analysis, metric, layer, selected, onMetric, onLayer, onSelect, busy }: {
+  analysis: Analysis
+  metric: Metric
+  layer: Layer
+  selected?: string
+  onMetric: (id: string) => void
+  onLayer: (layer: Layer) => void
+  onSelect: (id: string) => void
+  busy: boolean
+}) {
+  const stats = metricStats(analysis, metric.id)
+  const findings = useMemo(() => findingsFor(analysis, metric), [analysis, metric])
+  const station = analysis.stations.find((item) => item.id === selected)
+  const scale = (value: number | undefined) => (stats && value !== undefined ? colorAt((value - stats.min) / Math.max(1e-9, stats.max - stats.min)) : '#c7c7cc')
 
-function SpectralGraph({ data }: { data: Array<{ band: string; energy: number; noise: number }> }) {
   return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data}>
-        <CartesianGrid stroke="rgba(112, 241, 255, 0.12)" vertical={false} />
-        <XAxis dataKey="band" tick={{ fill: '#8bdce8', fontSize: 11 }} />
-        <YAxis tick={{ fill: '#8bdce8', fontSize: 11 }} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Bar dataKey="energy" radius={[4, 4, 0, 0]}>
-          {data.map((_, index) => <Cell key={`energy-${index}`} fill={palette[index % palette.length]} />)}
-        </Bar>
-        <Bar dataKey="noise" fill="rgba(255,255,255,0.24)" radius={[4, 4, 0, 0]} />
-      </BarChart>
-    </ResponsiveContainer>
-  )
-}
+    <div className="maris-workspace" aria-busy={busy}>
+      <div className="maris-toolbar">
+        <div className="maris-chips" role="group" aria-label="Measurement" data-lenis-prevent>
+          {analysis.metrics.map((item) => (
+            <button key={item.id} type="button" aria-pressed={item.id === metric.id} onClick={() => onMetric(item.id)}>{item.name}</button>
+          ))}
+        </div>
+        <div className="maris-actions">
+          <button type="button" onClick={() => download(`${analysis.name}-summary.json`, JSON.stringify(summaryJson(analysis, metric, layer), null, 2), 'application/json')}>
+            Export summary
+          </button>
+          <button type="button" onClick={() => download(`${analysis.name}.csv`, readingsCsv(analysis), 'text/csv')}>Export CSV</button>
+        </div>
+      </div>
 
-function RiskGraph({ data }: { data: SeriesPoint[] }) {
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <ScatterChart>
-        <CartesianGrid stroke="rgba(112, 241, 255, 0.12)" />
-        <XAxis dataKey="bloom" name="bloom" tick={{ fill: '#8bdce8', fontSize: 11 }} />
-        <YAxis dataKey="anomaly" name="anomaly" tick={{ fill: '#8bdce8', fontSize: 11 }} />
-        <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={tooltipStyle} />
-        <Scatter name="Risk vectors" data={data} fill="#3be7ff">
-          {data.map((point, index) => <Cell key={`risk-${index}`} fill={point.anomaly > 58 ? '#ff5c8a' : point.bloom > 60 ? '#ffd166' : '#3be7ff'} />)}
-        </Scatter>
-      </ScatterChart>
-    </ResponsiveContainer>
-  )
-}
+      <dl className="maris-stats">
+        <div><dt>Readings</dt><dd>{analysis.readings.length}</dd></div>
+        <div><dt>{analysis.stations[0]?.label.startsWith('Station') ? 'Stations' : 'Locations'}</dt><dd>{analysis.stations.length}</dd></div>
+        <div><dt>Deepest reading</dt><dd>{formatDepth(analysis.maxDepth)}</dd></div>
+        <div><dt>Duration</dt><dd>{formatDuration(analysis.durationSeconds)}</dd></div>
+      </dl>
 
-function DepthGraph({ data }: { data: SeriesPoint[] }) {
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <LineChart data={data}>
-        <CartesianGrid stroke="rgba(112, 241, 255, 0.12)" />
-        <XAxis dataKey="temperature" tick={{ fill: '#8bdce8', fontSize: 11 }} />
-        <YAxis dataKey="depth" reversed tick={{ fill: '#8bdce8', fontSize: 11 }} />
-        <Tooltip contentStyle={tooltipStyle} />
-        <Line type="monotone" dataKey="depth" stroke="#3be7ff" strokeWidth={2} dot={false} />
-        <Line type="monotone" dataKey="oxygen" stroke="#7cffb2" strokeWidth={2} dot={false} />
-      </LineChart>
-    </ResponsiveContainer>
-  )
-}
+      <div className="maris-grid">
+        <section className="maris-card maris-map-card" aria-labelledby="maris-map-title">
+          <div className="maris-card-head">
+            <h2 id="maris-map-title">Map</h2>
+            {analysis.hasProfiles && (
+              <div className="maris-segmented maris-segmented-small" role="group" aria-label="Depth layer">
+                {LAYERS.map((item) => (
+                  <button key={item.id} type="button" aria-pressed={layer === item.id} onClick={() => onLayer(item.id)}>{item.label}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <MapView analysis={analysis} metric={metric} layer={layer} selected={selected} onSelect={onSelect} color={scale} />
+          <div className="maris-legend">
+            <span>{formatValue(stats?.min, metric)}</span>
+            <i style={{ background: `linear-gradient(90deg, ${SCALE.join(', ')})` }} />
+            <span>{formatValue(stats?.max, metric)}</span>
+          </div>
+          {station && <StationSummary station={station} metric={metric} />}
+        </section>
 
-function HeatMatrix({ cells }: { cells: Array<{ id: string; level: number }> }) {
-  return (
-    <div className="maris-heat-grid">
-      {cells.map((cell) => (
-        <span key={cell.id} style={{ '--level': `${cell.level}%` } as CSSProperties} />
-      ))}
+        <section className="maris-card" aria-labelledby="maris-profile-title">
+          <div className="maris-card-head">
+            <h2 id="maris-profile-title">Depth profile</h2>
+            <p>{analysis.hasProfiles ? `${metric.name} against depth at each station` : `${metric.name} against depth`}</p>
+          </div>
+          <ProfileChart analysis={analysis} metric={metric} selected={selected} onSelect={onSelect} />
+        </section>
+
+        <section className="maris-card" aria-labelledby="maris-time-title">
+          <div className="maris-card-head">
+            <h2 id="maris-time-title">Over time</h2>
+            <p>Every reading in the order it was taken</p>
+          </div>
+          <TimeChart analysis={analysis} metric={metric} />
+        </section>
+        <section className="maris-card" aria-labelledby="maris-findings-title">
+          <div className="maris-card-head"><h2 id="maris-findings-title">What stands out</h2></div>
+          <ul className="maris-findings">
+            {findings.map((finding) => (
+              <li key={finding.title} data-tone={finding.tone}>
+                <strong>{finding.title}</strong>
+                <span>{finding.detail}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+      </div>
+
+      <details className="maris-card maris-table">
+        <summary>All readings <span>{analysis.readings.length}</span></summary>
+        <div className="maris-table-scroll" data-lenis-prevent>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">Location</th>
+                <th scope="col">Depth</th>
+                {analysis.metrics.map((item) => <th key={item.id} scope="col" aria-current={item.id === metric.id ? 'true' : undefined}>{item.name}{item.unit && <small> {item.unit}</small>}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {analysis.readings.map((reading) => (
+                <tr key={reading.index} data-selected={reading.station === selected} onClick={() => onSelect(reading.station)}>
+                  <td>{formatDuration(reading.timeSeconds)}</td>
+                  <td>{stationName(analysis, reading.station)}</td>
+                  <td>{formatDepth(reading.depth)}</td>
+                  {analysis.metrics.map((item) => <td key={item.id}>{formatValue(reading.values[item.id], item, false)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   )
 }
 
-function StatusChip({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone: 'neutral' | 'good' | 'warn' | 'bad' }) {
+function StationSummary({ station, metric }: { station: Station; metric: Metric }) {
+  const surface = stationValue(station, metric.id, 'surface')
+  const bottom = stationValue(station, metric.id, 'bottom')
+  const profiled = station.maxDepth - station.minDepth >= 0.4
   return (
-    <div className="maris-status-chip" data-tone={tone}>
-      {icon}
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="maris-station">
+      <strong>{station.label}</strong>
+      <span>{station.readings.length} reading{station.readings.length === 1 ? '' : 's'}{profiled ? `, ${formatDepth(station.minDepth)} to ${formatDepth(station.maxDepth)}` : `, ${formatDepth(station.minDepth)}`}</span>
+      <span>{profiled ? `${formatValue(surface, metric)} at the surface, ${formatValue(bottom, metric)} at the bottom` : formatValue(surface, metric)}</span>
     </div>
   )
 }
 
-function MetricReadout({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="maris-readout">
-      {icon}
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  )
+function niceLength(meters: number) {
+  const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500]
+  return steps.reduce((best, step) => (step <= meters ? step : best), steps[0])
 }
 
-function generateSeries(seed: number, count: number, scanLevel: number): SeriesPoint[] {
-  return Array.from({ length: count }, (_, index) => {
-    const wave = Math.sin((index + seed) / 7)
-    const pulse = Math.cos((index + seed * 0.4) / 11)
-    const drift = pseudo(seed + index * 13) - 0.5
-    const oxygen = clamp(58 + wave * 15 - scanLevel * 0.08 + drift * 8)
-    const bloom = clamp(38 + pulse * 20 + scanLevel * 0.18 + drift * 12)
-    const anomaly = clamp(18 + Math.abs(wave * pulse) * 58 + pseudo(seed * 2 + index) * 16)
-    return {
-      tick: index,
-      oxygen,
-      bloom,
-      anomaly,
-      turbidity: clamp(35 + Math.sin(index / 4) * 24 + drift * 22),
-      temperature: clamp(48 + Math.cos(index / 9) * 16 + scanLevel * 0.12),
-      signal: clamp(52 + Math.sin(index / 3 + seed) * 30 + pseudo(index + seed) * 20),
-      depth: clamp(8 + index * 0.32 + Math.sin(index / 6) * 4, 2, 42),
+function MapView({ analysis, metric, layer, selected, onSelect, color }: {
+  analysis: Analysis
+  metric: Metric
+  layer: Layer
+  selected?: string
+  onSelect: (id: string) => void
+  color: (value: number | undefined) => string
+}) {
+  const width = 640
+  const height = 400
+  const pad = 56
+  const xs = analysis.stations.map((station) => station.x)
+  const zs = analysis.stations.map((station) => station.z)
+  const span = Math.max(analysis.extentMeters, 2)
+  const scale = Math.min((width - pad * 2) / span, (height - pad * 2) / span)
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2
+  const cz = (Math.min(...zs) + Math.max(...zs)) / 2
+  const project = (x: number, z: number) => [width / 2 + (x - cx) * scale, height / 2 - (z - cz) * scale] as const
+  const route = analysis.readings.map((reading) => project(reading.x, reading.z).join(',')).join(' ')
+  const bar = niceLength(span * 0.3)
+  const many = analysis.stations.length > 9
+  const radius = many ? 9 : 14
+
+  const onKey = (event: KeyboardEvent, id: string) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onSelect(id)
     }
+  }
+
+  return (
+    <svg className="maris-map" viewBox={`0 0 ${width} ${height}`} role="group" aria-label={`Map of ${analysis.stations.length} locations coloured by ${metric.name.toLowerCase()}`}>
+      <defs>
+        <pattern id="maris-grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M40 0H0V40" fill="none" stroke="#e8e8ed" strokeWidth="1" />
+        </pattern>
+      </defs>
+      <rect width={width} height={height} rx="14" fill="#f9f9fb" />
+      <rect width={width} height={height} rx="14" fill="url(#maris-grid)" />
+      <polyline points={route} fill="none" stroke="#c7c7cc" strokeWidth="1.5" strokeDasharray="3 5" strokeLinecap="round" />
+      {analysis.stations.map((station) => {
+        const [x, y] = project(station.x, station.z)
+        const value = stationValue(station, metric.id, layer)
+        const isSelected = station.id === selected
+        return (
+          <g
+            key={station.id}
+            className="maris-point"
+            role="button"
+            tabIndex={0}
+            aria-pressed={isSelected}
+            aria-label={`${station.label}: ${formatValue(value, metric)}`}
+            onClick={() => onSelect(station.id)}
+            onKeyDown={(event) => onKey(event, station.id)}
+          >
+            {isSelected && <circle cx={x} cy={y} r={radius + 6} fill="none" stroke={SELECTED} strokeWidth="2.5" />}
+            <circle cx={x} cy={y} r={radius} fill={color(value)} stroke="#fff" strokeWidth="2.5" />
+            {!many && <text x={x} y={y + radius + 18} textAnchor="middle">{station.label}</text>}
+            <title>{`${station.label}: ${formatValue(value, metric)}`}</title>
+          </g>
+        )
+      })}
+      <g transform={`translate(${pad - 24}, ${height - 26})`} className="maris-scale">
+        <path d={`M0 0h${bar * scale}`} stroke="#1d1d1f" strokeWidth="2" />
+        <path d={`M0 -4v8M${bar * scale} -4v8`} stroke="#1d1d1f" strokeWidth="1.5" />
+        <text x={(bar * scale) / 2} y="-9" textAnchor="middle">{bar >= 1 ? `${bar} m` : `${bar * 100} cm`}</text>
+      </g>
+      <g transform={`translate(${width - 34}, 34)`} className="maris-north" aria-hidden="true">
+        <path d="M0 -12 6 6 0 2 -6 6Z" fill="#1d1d1f" />
+        <text y="22" textAnchor="middle">N</text>
+      </g>
+    </svg>
+  )
+}
+
+const axisTick = { fill: '#86868b', fontSize: 12 }
+const tidy = (value: number) => String(Number(value.toPrecision(3)))
+
+/** Evenly spaced depth ticks (0, 0.5, 1 … m) that cover the deepest reading. */
+function depthTicks(maxDepth: number) {
+  const step = maxDepth > 4 ? 1 : maxDepth > 1.5 ? 0.5 : maxDepth > 0.6 ? 0.25 : 0.1
+  const top = Math.max(step, Math.ceil(maxDepth / step - 1e-9) * step)
+  return Array.from({ length: Math.round(top / step) + 1 }, (_, index) => Number((index * step).toFixed(2)))
+}
+
+function profileSeries(station: Station, metricId: string) {
+  // Down- and up-casts overlap; average readings that share a depth so each line reads cleanly.
+  const byDepth = new Map<number, number[]>()
+  station.readings.forEach((reading) => {
+    const value = reading.values[metricId]
+    if (!Number.isFinite(value)) return
+    const key = Math.round(reading.depth * 20) / 20
+    byDepth.set(key, [...(byDepth.get(key) ?? []), value])
   })
+  return [...byDepth.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([depth, values]) => ({ depth, value: values.reduce((sum, value) => sum + value, 0) / values.length, station: station.id }))
 }
 
-function generateSpectrum(data: SeriesPoint[], seed: number) {
-  return ['O2-LOW', 'O2-HI', 'PHASE', 'TURB', 'THERM', 'UV', 'CHL', 'NOISE'].map((band, index) => ({
-    band,
-    energy: Math.round(clamp((data[index * 7]?.signal ?? 40) + pseudo(seed + index) * 34)),
-    noise: Math.round(clamp((data[index * 5]?.anomaly ?? 20) * 0.58 + pseudo(seed - index) * 22)),
-  }))
+function ProfileChart({ analysis, metric, selected, onSelect }: { analysis: Analysis; metric: Metric; selected?: string; onSelect: (id: string) => void }) {
+  const series = analysis.hasProfiles
+    ? analysis.stations.filter((station) => station.maxDepth - station.minDepth >= 0.4)
+    : []
+  // Draw the selected station last so it sits on top.
+  const ordered = [...series.filter((station) => station.id !== selected), ...series.filter((station) => station.id === selected)]
+  const scatter = analysis.readings
+    .filter((reading) => Number.isFinite(reading.values[metric.id]))
+    .map((reading) => ({ depth: reading.depth, value: reading.values[metric.id], station: reading.station }))
+  const ticks = depthTicks(analysis.maxDepth)
+
+  return (
+    <div className="maris-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <ScatterChart margin={{ top: 8, right: 16, bottom: 24, left: 4 }}>
+          <CartesianGrid stroke="#e8e8ed" vertical={false} />
+          <XAxis type="number" dataKey="value" name={metric.name} domain={['auto', 'auto']} tick={axisTick} tickLine={false} axisLine={{ stroke: '#d2d2d7' }} tickFormatter={tidy}
+            label={{ value: metric.unit ? `${metric.name} (${metric.unit})` : metric.name, position: 'insideBottom', offset: -14, fill: '#6e6e73', fontSize: 12 }} />
+          <YAxis type="number" dataKey="depth" name="Depth" reversed domain={[0, ticks[ticks.length - 1]]} ticks={ticks} tick={axisTick} tickLine={false} axisLine={false} width={48}
+            tickFormatter={(depth: number) => `${depth} m`} />
+          <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<PointTooltip analysis={analysis} metric={metric} />} />
+          {analysis.hasProfiles
+            ? ordered.map((station) => {
+                const active = station.id === selected
+                return (
+                  <Scatter
+                    key={station.id}
+                    data={profileSeries(station, metric.id)}
+                    line={{ stroke: active ? SELECTED : '#c7c7cc', strokeWidth: active ? 2.5 : 1.5 }}
+                    fill={active ? SELECTED : '#c7c7cc'}
+                    shape={active ? 'circle' : () => <g />}
+                    isAnimationActive={false}
+                    onClick={() => onSelect(station.id)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                )
+              })
+            : <Scatter data={scatter} fill={SELECTED} isAnimationActive={false} onClick={(point) => {
+                const station = (point as { payload?: { station?: string } }).payload?.station
+                if (station) onSelect(station)
+              }} />}
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  )
 }
 
-function generateHeatCells(data: SeriesPoint[]) {
-  return Array.from({ length: 80 }, (_, index) => {
-    const point = data[index % data.length]
-    const level = clamp((point.bloom * 0.38 + point.anomaly * 0.36 + point.turbidity * 0.26 + index) % 100)
-    return { id: `${point.tick}-${index}`, level }
-  })
+function PointTooltip({ active, payload, analysis, metric }: { active?: boolean; payload?: Array<{ payload: { depth: number; value: number; station: string } }>; analysis: Analysis; metric: Metric }) {
+  const point = active ? payload?.[0]?.payload : undefined
+  if (!point) return null
+  return (
+    <div className="maris-tooltip">
+      <strong>{stationName(analysis, point.station)}</strong>
+      <span>{formatValue(point.value, metric)} at {formatDepth(point.depth)}</span>
+    </div>
+  )
 }
 
-function buildRadar(data: SeriesPoint[]) {
-  const avg = (key: keyof SeriesPoint) => data.reduce((sum, point) => sum + Number(point[key]), 0) / Math.max(1, data.length)
-  return [
-    { metric: 'oxygen', value: Math.round(avg('oxygen')) },
-    { metric: 'bloom', value: Math.round(avg('bloom')) },
-    { metric: 'anomaly', value: Math.round(avg('anomaly')) },
-    { metric: 'turbidity', value: Math.round(avg('turbidity')) },
-    { metric: 'thermal', value: Math.round(avg('temperature')) },
-    { metric: 'signal', value: Math.round(avg('signal')) },
-  ]
+function TimeChart({ analysis, metric }: { analysis: Analysis; metric: Metric }) {
+  const data = analysis.readings
+    .filter((reading) => Number.isFinite(reading.values[metric.id]))
+    .map((reading) => ({ t: reading.timeSeconds, value: reading.values[metric.id], depth: reading.depth, station: reading.station }))
+  const minutes = analysis.durationSeconds >= 120
+  return (
+    <div className="maris-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data} margin={{ top: 8, right: 16, bottom: 24, left: 4 }}>
+          <defs>
+            <linearGradient id="maris-area" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={SELECTED} stopOpacity={0.22} />
+              <stop offset="100%" stopColor={SELECTED} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid stroke="#e8e8ed" vertical={false} />
+          <XAxis dataKey="t" type="number" domain={['dataMin', 'dataMax']} tick={axisTick} tickLine={false} axisLine={{ stroke: '#d2d2d7' }}
+            tickFormatter={(t: number) => (minutes ? `${Math.round(t / 60)}m` : `${Math.round(t)}s`)}
+            label={{ value: 'Time since start', position: 'insideBottom', offset: -14, fill: '#6e6e73', fontSize: 12 }} />
+          <YAxis domain={['auto', 'auto']} tick={axisTick} tickLine={false} axisLine={false} width={44} tickFormatter={tidy} />
+          {metric.id === 'do' && <ReferenceLine y={5} stroke="#bf4800" strokeDasharray="4 4" label={{ value: '5 mg/L', position: 'insideTopRight', fill: '#bf4800', fontSize: 12 }} />}
+          <Tooltip content={<TimeTooltip analysis={analysis} metric={metric} />} />
+          <Area type="monotone" dataKey="value" stroke={SELECTED} strokeWidth={2} fill="url(#maris-area)" isAnimationActive={false} dot={false} activeDot={{ r: 4 }} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
 }
 
-function buildFindings(data: SeriesPoint[], scanLevel: number): Finding[] {
-  const summary = summarize(data, [])
-  return [
-    {
-      id: 'oxygen',
-      label: 'Oxygen stability corridor',
-      confidence: Math.round(clamp(summary.oxygen + scanLevel * 0.12)),
-      tone: summary.oxygen > 62 ? 'good' : 'warn',
-      detail: summary.oxygen > 62 ? 'Stable enough for public-water review mode.' : 'Oxygen trace is uneven across the sample window.',
-    },
-    {
-      id: 'bloom',
-      label: 'Bloom pressure cluster',
-      confidence: Math.round(clamp(summary.risk + 12)),
-      tone: summary.risk > 64 ? 'bad' : summary.risk > 42 ? 'warn' : 'good',
-      detail: 'Combines thermal, light, turbidity, and synthetic chlorophyll signals.',
-    },
-    {
-      id: 'anomaly',
-      label: 'Outlier plume candidate',
-      confidence: Math.round(clamp(summary.anomaly + 18)),
-      tone: summary.anomaly > 58 ? 'bad' : summary.anomaly > 35 ? 'warn' : 'good',
-      detail: 'Flags points that visually deserve investigation in a field report.',
-    },
-  ]
-}
-
-function summarize(data: SeriesPoint[], findings: Finding[]) {
-  const avg = (key: keyof SeriesPoint) => data.reduce((sum, point) => sum + Number(point[key]), 0) / Math.max(1, data.length)
-  const oxygen = Math.round(clamp(avg('oxygen')))
-  const risk = Math.round(clamp((avg('bloom') + avg('turbidity')) / 2))
-  const anomaly = Math.round(clamp(avg('anomaly')))
-  const signal = Math.round(clamp(avg('signal')))
-  const confidence = Math.round(clamp((signal + oxygen + (findings[0]?.confidence ?? 72)) / 3))
-  return { oxygen, risk, anomaly, signal, confidence }
-}
-
-function pseudo(value: number) {
-  const x = Math.sin(value * 999) * 10000
-  return x - Math.floor(x)
-}
-
-function clamp(value: number, min = 0, max = 100) {
-  return Math.max(min, Math.min(max, value))
-}
-
-function modeTitle(mode: GraphMode) {
-  if (mode === 'spectral') return 'Spectral decomposition graph'
-  if (mode === 'risk') return 'Risk-vector scatter synthesis'
-  if (mode === 'depth') return 'Depth profile graph generator'
-  return 'Sensor cascade graph generator'
-}
-
-const tooltipStyle = {
-  background: '#061014',
-  border: '1px solid rgba(59, 231, 255, 0.32)',
-  color: '#e9fbff',
+function TimeTooltip({ active, payload, analysis, metric }: { active?: boolean; payload?: Array<{ payload: { t: number; value: number; depth: number; station: string } }>; analysis: Analysis; metric: Metric }) {
+  const point = active ? payload?.[0]?.payload : undefined
+  if (!point) return null
+  return (
+    <div className="maris-tooltip">
+      <strong>{formatValue(point.value, metric)}</strong>
+      <span>{stationName(analysis, point.station)}, {formatDepth(point.depth)}, {formatDuration(point.t)}</span>
+    </div>
+  )
 }
 
 export default MarisLab

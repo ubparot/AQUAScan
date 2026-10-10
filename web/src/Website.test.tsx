@@ -55,7 +55,7 @@ describe('Website control authentication', () => {
     window.history.pushState({}, '', '/control')
     render(<Website />)
 
-    expect(screen.getByRole('heading', { name: /sign in to live control/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /sign in to live control/i })).toBeInTheDocument()
     expect(screen.queryByTestId('control-dashboard')).not.toBeInTheDocument()
 
     fireEvent.click(await screen.findByRole('button', { name: /continue with google/i }))
@@ -63,11 +63,11 @@ describe('Website control authentication', () => {
     expect(screen.getByText('operator@example.com')).toBeInTheDocument()
   })
 
-  it('renders the public Maris demo without authentication', () => {
+  it('renders the public Maris demo without authentication', async () => {
     window.history.pushState({}, '', '/maris')
     render(<Website />)
 
-    expect(screen.getByTestId('maris-dashboard')).toBeInTheDocument()
+    expect(await screen.findByTestId('maris-dashboard')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /sign in to live control/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('control-dashboard')).not.toBeInTheDocument()
   })
@@ -88,7 +88,7 @@ describe('Website control authentication', () => {
     window.history.pushState({}, '', '/control')
     render(<Website />)
 
-    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'operator@example.com' } })
+    fireEvent.change(await screen.findByLabelText(/^email$/i), { target: { value: 'operator@example.com' } })
     fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'secret123' } })
     fireEvent.click(screen.getByRole('button', { name: /sign in with email/i }))
 
@@ -101,9 +101,9 @@ describe('Website control authentication', () => {
     window.history.pushState({}, '', '/control')
     render(<Website />)
 
-    fireEvent.click(screen.getByRole('button', { name: /create account/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /create account/i }))
     fireEvent.change(screen.getByLabelText(/^name$/i), { target: { value: 'Operator' } })
-    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'operator@example.com' } })
+    fireEvent.change(await screen.findByLabelText(/^email$/i), { target: { value: 'operator@example.com' } })
     fireEvent.change(screen.getByLabelText(/^password$/i), { target: { value: 'secret123' } })
     fireEvent.click(screen.getAllByRole('button', { name: /^create account$/i })[1])
 
@@ -115,7 +115,7 @@ describe('Website control authentication', () => {
     window.history.pushState({}, '', '/control')
     render(<Website />)
 
-    fireEvent.change(screen.getByLabelText(/^email$/i), { target: { value: 'operator@example.com' } })
+    fireEvent.change(await screen.findByLabelText(/^email$/i), { target: { value: 'operator@example.com' } })
     fireEvent.click(screen.getByRole('button', { name: /send password reset email/i }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(/password reset email sent/i)
@@ -127,7 +127,7 @@ describe('Website control authentication', () => {
     window.history.pushState({}, '', '/control')
     render(<Website />)
 
-    expect(screen.getByTestId('control-dashboard')).toBeInTheDocument()
+    expect(await screen.findByTestId('control-dashboard')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /log out/i }))
 
     await waitFor(() => expect(authMock.signOutOfGoogle).toHaveBeenCalled())
@@ -135,30 +135,51 @@ describe('Website control authentication', () => {
     expect(screen.queryByTestId('control-dashboard')).not.toBeInTheDocument()
   })
 
-  it('keeps live control locked when Firebase auth is not configured', () => {
+  it('keeps live control locked when Firebase auth is not configured', async () => {
     authMock.setupIssues = ['Missing Firebase env vars: VITE_FIREBASE_API_KEY']
     window.history.pushState({}, '', '/control')
     render(<Website />)
 
-    expect(screen.getByText(/firebase auth is not configured/i)).toBeInTheDocument()
+    expect(await screen.findByText(/firebase auth is not configured/i)).toBeInTheDocument()
     expect(screen.getByText(/VITE_FIREBASE_API_KEY/i)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /continue with google/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('control-dashboard')).not.toBeInTheDocument()
   })
 
-  it('keeps the AquaScan field video on the company homepage', () => {
+  it('opens the AquaScan field film from the homepage hero', () => {
     render(<Website />)
 
+    expect(screen.getByRole('heading', { level: 1, name: 'AquaScan' })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/aquascan vessel field video/i)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /watch the film/i }))
     const video = screen.getByLabelText(/aquascan vessel field video/i)
     expect(video).toHaveAttribute('src', '/media/aquascan-hero.mp4')
     expect(video).toHaveAttribute('poster', '/media/aquascan-hero-poster.jpg')
     expect(video).toHaveAttribute('autoplay')
-    expect(video).toHaveAttribute('loop')
     expect(video).toHaveProperty('muted', true)
-    expect(document.querySelector('.hero-proof')).toHaveTextContent(/aquascan in development/i)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: /aquascan film/i })).not.toBeInTheDocument()
+  })
+
+  it('routes between pages with real links and keeps legacy paths working', () => {
+    window.history.pushState({}, '', '/products')
+    render(<Website />)
+
+    expect(screen.getByRole('heading', { level: 1, name: 'AquaScan' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /tech specs/i })).toBeInTheDocument()
+
+    const companyLink = screen.getAllByRole('link', { name: 'Company' })[0]
+    expect(companyLink).toHaveAttribute('href', '/company')
+    fireEvent.click(companyLink)
+
+    expect(window.location.pathname).toBe('/company')
+    expect(screen.getByRole('heading', { name: /the founding team/i })).toBeInTheDocument()
   })
 
   it.each([
+    ['/newsroom', /aquascan remains in active development/i],
     ['/news', /aquascan remains in active development/i],
     ['/privacy', /privacy policy/i],
     ['/terms', /terms of use/i],

@@ -4,11 +4,19 @@ Public-facing AQUAScan website and frontend-only local control dashboard.
 
 ## Pages
 
-- `/` - AQUAScan overview and primary landing page
-- `/technology` - vessel, navigation, sensing, and data-system overview
-- `/impact` - environmental-monitoring value and applications
-- `/about` - project purpose and design principles
-- `/control` - Google-authenticated live-control and mission dashboard
+- `/` - AquaLabs home
+- `/aquascan` - AquaScan product page with tech specs (`/products` and `/technology` still work)
+- `/applications` - where AquaScan fits and why depth matters (`/impact` still works)
+- `/company` - company story, principles, and founding team (`/about` still works)
+- `/newsroom` - updates (`/news` still works)
+- `/contact`, `/privacy`, `/terms`
+- `/maris` - Maris, public water-quality analysis (no sign-in or hardware needed)
+- `/control` - authenticated live-control and mission dashboard
+
+The marketing site lives in `src/site/` (routes, shared chrome, one file per page,
+and `site.css`). Photography and renders are WebP files in `public/media/site/`.
+`/control` and `/maris` are lazy-loaded so their Firebase, Three.js, chart, and
+ONNX code never ships with the marketing pages.
 
 The included `vercel.json` rewrites public routes to the Vite application when
 the site is deployed on Vercel.
