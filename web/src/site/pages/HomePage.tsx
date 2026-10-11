@@ -72,22 +72,6 @@ export function HomePage() {
           <Reveal as="h2" className="section-title"><span id="explore-title">Explore AquaScan.</span></Reveal>
         </div>
         <div className="explore-grid">
-          <Reveal className="explore-card explore-photo">
-            <Img {...media.pondUnderway} />
-            <div className="explore-copy">
-              <h3>The vessel</h3>
-              <p>Two hulls, a winch, and GPS navigation on one steady platform.</p>
-              <ButtonLink to="products" hash="vessel">Learn more</ButtonLink>
-            </div>
-          </Reveal>
-          <Reveal className="explore-card explore-photo" delay={80}>
-            <Img {...media.poolDeploy} />
-            <div className="explore-copy">
-              <h3>Where it fits</h3>
-              <p>Ponds, lakes, classrooms, and restoration sites.</p>
-              <ButtonLink to="applications">See applications</ButtonLink>
-            </div>
-          </Reveal>
           <Reveal className="explore-card explore-screen">
             <div className="explore-copy">
               <h3>Maris</h3>
@@ -103,6 +87,22 @@ export function HomePage() {
               <ButtonLink to="products" hash="software">Learn more</ButtonLink>
             </div>
             <WindowFrame><Img {...media.controlDrive} /></WindowFrame>
+          </Reveal>
+          <Reveal className="explore-card explore-photo">
+            <Img {...media.pondUnderway} />
+            <div className="explore-copy">
+              <h3>The vessel</h3>
+              <p>Two hulls, a winch, and GPS navigation on one steady platform.</p>
+              <ButtonLink to="products" hash="vessel">Learn more</ButtonLink>
+            </div>
+          </Reveal>
+          <Reveal className="explore-card explore-photo" delay={80}>
+            <Img {...media.poolDeploy} />
+            <div className="explore-copy">
+              <h3>Where it fits</h3>
+              <p>Ponds, lakes, classrooms, and restoration sites.</p>
+              <ButtonLink to="applications">See applications</ButtonLink>
+            </div>
           </Reveal>
         </div>
       </section>

@@ -48,7 +48,7 @@ function Laurel({ side }: { side: 'left' | 'right' }) {
   )
 }
 
-/** "5th in the Nation" with laurels, like an award line on a book cover. */
+/** "Top 5 Nationally" with laurels, like an award line on a book cover. */
 export function AwardBadge({ tone = 'dark', className }: { tone?: 'dark' | 'light'; className?: string }) {
   return (
     <p className={['award', `award-${tone}`, className].filter(Boolean).join(' ')}>

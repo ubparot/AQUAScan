@@ -63,8 +63,8 @@ export function CompanyPage() {
         <Reveal className="container narrow center">
           <AwardBadge />
           <p className="recognition-copy">
-            AquaScan placed fifth in the nation in Engineering Design at the 2026 Technology Student Association National
-            Conference.
+            AquaScan finished in the top five nationally in Engineering Design at the 2026 Technology Student Association
+            National Conference.
           </p>
           <MoreLink to="news">Read the story</MoreLink>
         </Reveal>

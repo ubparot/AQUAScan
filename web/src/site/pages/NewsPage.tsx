@@ -5,9 +5,9 @@ import type { SitePage } from '../routes'
 type Story = { title: string; summary: string; image: Media; to: SitePage; hash?: string }
 
 const featured: Story = {
-  title: 'AquaScan places fifth in the nation at TSA.',
+  title: 'AquaScan finishes in the top five nationally at TSA.',
   summary:
-    'AquaLabs took AquaScan to the 2026 Technology Student Association National Conference and placed fifth in the country in Engineering Design, after a development cycle that added autonomous missions, depth-aware sensing, and Maris.',
+    'AquaLabs took AquaScan to the 2026 Technology Student Association National Conference and finished in the top five in the country in Engineering Design, after a development cycle that added autonomous missions, depth-aware sensing, and Maris.',
   image: media.vesselPond,
   to: 'products',
 }
@@ -18,7 +18,6 @@ const stories: Story[] = [
     summary: 'After seal and subsystem tests, AquaScan sampled multiple points at varying depths in real pond conditions.',
     image: media.poolDeploy,
     to: 'products',
-    hash: 'testing',
   },
   {
     title: 'Maris brings the analysis to your browser.',

@@ -14,7 +14,6 @@ export const media = {
   vesselPond: site('vessel-pond', 1448, 1086, 'AquaScan floating on a calm pond at dusk, trees reflected in the water', '50% 45%'),
   boatDusk: site('boat-dusk', 2000, 1394, 'An early AquaScan build floating at the edge of a pond at sunset'),
   boatFountain: site('boat-fountain', 1600, 1155, 'AquaScan on a pond during field testing, with a fountain in the background', '50% 92%'),
-  boatPool: site('boat-pool', 916, 688, 'AquaScan floating in a swimming pool during controlled testing'),
   boatRender: site('boat-render', 973, 598, 'CAD rendering of the AquaScan catamaran hull and canopy'),
   boatRenderWinch: site('boat-render-winch', 1431, 1099, 'CAD rendering of the winch and spool mounted between the pontoons'),
   probeShore: site('probe-shore', 2048, 1536, 'The AquaScan probe resting in shallow water at the edge of a pond'),
@@ -29,7 +28,6 @@ export const media = {
   sensorMaps: site('sensor-maps', 1400, 1615, 'Grid of location-based heat maps for each sensor channel from a pond test'),
   depthProfiles: site('depth-profiles', 1600, 1329, 'Charts of temperature, pH, oxygen, turbidity and other readings plotted against probe depth'),
   turbidityMap: site('turbidity-map', 1314, 1116, 'Turbidity heat map interpolated from GPS-tagged sample points'),
-  sealTest: site('seal-test', 1400, 1050, 'An O-ring seal test piece sitting in water during waterproofing trials'),
 } satisfies Record<string, Media>
 
 export type { Media }

@@ -6,7 +6,6 @@ import type { MarketingPage, SitePage } from './routes'
 
 const globalItems: Array<{ page: SitePage; label: string }> = [
   { page: 'products', label: 'AquaScan' },
-  { page: 'maris', label: 'Maris' },
   { page: 'applications', label: 'Applications' },
   { page: 'company', label: 'About' },
   { page: 'news', label: 'Newsroom' },

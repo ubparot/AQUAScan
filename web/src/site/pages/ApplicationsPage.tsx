@@ -1,7 +1,7 @@
 import { SurveyBand } from '../Badges'
-import { DepthGraphic } from '../DepthGraphic'
 import { media, type Media } from '../media'
 import { Img, Reveal } from '../primitives'
+import { SurfaceVsDepth } from '../SurfaceVsDepth'
 
 const uses: Array<{ title: string; copy: string; image: Media }> = [
   {
@@ -48,7 +48,7 @@ export function ApplicationsPage() {
               looks fine. A reading at the surface misses it. A profile from top to bottom shows it.
             </p>
           </Reveal>
-          <DepthGraphic />
+          <SurfaceVsDepth />
         </div>
       </section>
 

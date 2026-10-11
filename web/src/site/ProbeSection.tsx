@@ -1,17 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { ButtonLink } from './primitives'
 import { clamp, explodeAt } from './probeTimeline'
+import { webglAvailable } from './webgl'
 
 const ProbeStage = lazy(() => import('./ProbeStage'))
-
-function webglAvailable() {
-  try {
-    const canvas = document.createElement('canvas')
-    return Boolean(canvas.getContext('webgl2') ?? canvas.getContext('webgl'))
-  } catch {
-    return false
-  }
-}
 
 /**
  * "The probe": the real probe CAD on a light stage. It separates into its parts as the section moves up the
@@ -20,7 +12,7 @@ function webglAvailable() {
 export function ProbeSection() {
   const sectionRef = useRef<HTMLElement>(null)
   const progress = useRef(0)
-  const [use3d] = useState(() => typeof window !== 'undefined' && typeof ResizeObserver !== 'undefined' && webglAvailable())
+  const [use3d] = useState(webglAvailable)
   const [modelReady, setModelReady] = useState(false)
   const onReady = useCallback(() => setModelReady(true), [])
 

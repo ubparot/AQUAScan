@@ -1,16 +1,10 @@
-import { useRef, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { AquaScanLogo } from '../AquaScanLogo'
 import { AwardBadge, WindowFrame } from '../Badges'
 import { ChapterNav } from '../ChapterNav'
-import { media, type Media } from '../media'
+import { HighlightStory } from '../HighlightStory'
+import { media } from '../media'
 import { ButtonLink, Img, MoreLink, Reveal, SiteLink } from '../primitives'
-
-const highlights: Array<{ caption: string; image: Media }> = [
-  { caption: 'Drives itself to the spot you pick on the map.', image: media.pondUnderway },
-  { caption: 'A winch lowers the probe to the depth you choose.', image: media.poolDeploy },
-  { caption: 'Sensors read the water at every depth.', image: media.underwaterProbe },
-  { caption: 'Every reading is tagged with position and depth.', image: media.boatFountain },
-]
 
 const steps = [
   { title: 'Navigate.', copy: 'Drive manually or send the vessel to GPS waypoints chosen in the operator interface.' },
@@ -129,22 +123,22 @@ export function AquaScanPage() {
         <Reveal className="product-hero-copy">
           <h1 className="hero-logo hero-logo-large"><AquaScanLogo /></h1>
           <p className="product-hero-subtitle">Water quality, mapped by location and depth.</p>
+          <p className="product-hero-lede">
+            AquaScan is an autonomous research boat for ponds, lakes, and sheltered water. It drives itself to the points
+            you pick on a map, lowers a seven-sensor probe on a tether, and records oxygen, clarity, temperature, dissolved
+            solids, and light from the surface to the bottom. Every reading is tagged with its GPS position and depth, ready
+            to map and compare in Maris.
+          </p>
           <div className="tile-actions">
             <ButtonLink to="maris">Explore the data</ButtonLink>
             <ButtonLink to="products" hash="specs" variant="secondary">Tech specs</ButtonLink>
           </div>
           <AwardBadge className="product-hero-award" />
         </Reveal>
-        <Reveal className="product-hero-media" delay={150}>
-          <Img {...media.vesselPond} eager />
-        </Reveal>
       </section>
 
-      <section className="section highlights" aria-labelledby="highlights-title">
-        <div className="container">
-          <Reveal as="h2" className="section-title" ><span id="highlights-title">Get the highlights.</span></Reveal>
-        </div>
-        <Gallery />
+      <section className="section highlights" aria-label="Highlights">
+        <HighlightStory />
       </section>
 
       <section className="section section-render" id="vessel">
@@ -273,32 +267,6 @@ export function AquaScanPage() {
         </div>
       </section>
 
-      <section className="section section-alt" id="testing">
-        <div className="container">
-          <Reveal className="section-head">
-            <h2 className="section-title">Sealed. Floated.<br />Driven. Dipped.</h2>
-            <p className="section-lede">
-              Every subsystem was tested on its own before the whole vessel went in the water, starting with the riskiest part:
-              keeping the electronics dry.
-            </p>
-          </Reveal>
-          <div className="test-grid">
-            <Reveal as="figure" className="test-card">
-              <Img {...media.sealTest} />
-              <figcaption><h3>Seal testing</h3><p>The chosen O-ring design held water for about 12 hours without leaking.</p></figcaption>
-            </Reveal>
-            <Reveal as="figure" className="test-card" delay={80}>
-              <Img {...media.boatPool} />
-              <figcaption><h3>Pool testing</h3><p>Flotation, propulsion, probe deployment, and live data in controlled water.</p></figcaption>
-            </Reveal>
-            <Reveal as="figure" className="test-card" delay={160}>
-              <Img {...media.pondTest} />
-              <figcaption><h3>Pond testing</h3><p>Multi-point sampling at varying depths in murky, real-world water.</p></figcaption>
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
       <section className="section specs" id="specs" aria-labelledby="specs-title">
         <div className="container">
           <Reveal as="h2" className="section-title"><span id="specs-title">Tech specs</span></Reveal>
@@ -333,46 +301,5 @@ export function AquaScanFootnotes() {
       <li>Runtime is an estimate for the current prototype and depends on speed, payload, and winch use.</li>
       <li>AquaScan is a working prototype in active development. Specifications describe the current build and may change.</li>
     </ol>
-  )
-}
-
-function Gallery() {
-  const trackRef = useRef<HTMLUListElement>(null)
-  const [position, setPosition] = useState<'start' | 'middle' | 'end'>('start')
-
-  const scroll = (direction: 1 | -1) => {
-    const track = trackRef.current
-    if (!track) return
-    const card = track.querySelector('li')
-    const step = card ? card.getBoundingClientRect().width + 20 : track.clientWidth * 0.8
-    track.scrollBy({ left: direction * step, behavior: 'smooth' })
-  }
-
-  const update = () => {
-    const track = trackRef.current
-    if (!track) return
-    const max = track.scrollWidth - track.clientWidth - 4
-    setPosition(track.scrollLeft <= 4 ? 'start' : track.scrollLeft >= max ? 'end' : 'middle')
-  }
-
-  return (
-    <div className="gallery">
-      <ul className="gallery-track" ref={trackRef} onScroll={update}>
-        {highlights.map((item) => (
-          <li key={item.caption} className="gallery-card">
-            <Img {...item.image} />
-            <p>{item.caption}</p>
-          </li>
-        ))}
-      </ul>
-      <div className="gallery-controls">
-        <button type="button" aria-label="Previous highlight" disabled={position === 'start'} onClick={() => scroll(-1)}>
-          <svg viewBox="0 0 8 14" width="8" height="14" aria-hidden="true"><path d="M7 1L1 7l6 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-        <button type="button" aria-label="Next highlight" disabled={position === 'end'} onClick={() => scroll(1)}>
-          <svg viewBox="0 0 8 14" width="8" height="14" aria-hidden="true"><path d="M1 1l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-      </div>
-    </div>
   )
 }

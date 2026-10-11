@@ -175,7 +175,7 @@ describe('Website control authentication', () => {
     expect(loop).toHaveAttribute('src', '/media/aquascan-field.mp4')
     expect(loop).toHaveProperty('muted', true)
     expect(screen.getByRole('button', { name: /pause background video|play background video/i })).toBeInTheDocument()
-    expect(screen.queryByText('5th in the Nation')).not.toBeInTheDocument()
+    expect(screen.queryByText('Top 5 Nationally')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'The probe' })).toBeInTheDocument()
 
     const survey = screen.getAllByRole('link', { name: /take the survey/i })[0]
@@ -200,8 +200,8 @@ describe('Website control authentication', () => {
   })
 
   it.each([
-    ['/newsroom', /fifth in the nation/i],
-    ['/news', /fifth in the nation/i],
+    ['/newsroom', /top five nationally/i],
+    ['/news', /top five nationally/i],
     ['/privacy', /privacy policy/i],
     ['/terms', /terms of use/i],
   ])('renders the public company page at %s', (path, heading) => {

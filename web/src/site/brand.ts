@@ -8,8 +8,7 @@
 export const SURVEY_URL = 'https://forms.gle/CJHyLLHwWEMvw5T67'
 
 export const AWARD = {
-  rank: '5th',
-  headline: '5th in the Nation',
+  headline: 'Top 5 Nationally',
   event: 'Engineering Design',
   competition: 'TSA National Conference',
   year: '2026',
